@@ -24,32 +24,33 @@
 #include "libavformat/avformat.h"
 #include "libavformat/url.h"
 #include "libavformat/version.h"
+#include "libavformat/avio_internal.h"
+#include "libavformat/avformat.h"
+#include "libavformat/internal.h"
+#include "libavutil/avstring.h"
 
-#define IJK_REGISTER_DEMUXER(x)                                         \
-    {                                                                   \
-        extern AVInputFormat ijkff_##x##_demuxer;                       \
-        int ijkav_register_##x##_demuxer(AVInputFormat *demuxer, int demuxer_size);   \
-        ijkav_register_##x##_demuxer(&ijkff_##x##_demuxer, sizeof(AVInputFormat));    \
-    }
 
-#define IJK_REGISTER_PROTOCOL(x)                                        \
-    {                                                                   \
-        extern URLProtocol ijkimp_ff_##x##_protocol;                        \
-        int ijkav_register_##x##_protocol(URLProtocol *protocol, int protocol_size);\
-        ijkav_register_##x##_protocol(&ijkimp_ff_##x##_protocol, sizeof(URLProtocol));  \
-    }
+#define IJK_REGISTER_DEMUXER(x)                                                     \
+{                                                                                   \
+    extern AVInputFormat ijkff_##x##_demuxer;                                       \
+    int ijkav_register_##x##_demuxer(AVInputFormat *demuxer, int demuxer_size);     \
+    ijkav_register_##x##_demuxer(&ijkff_##x##_demuxer, sizeof(AVInputFormat));      \
+}
 
-static struct AVInputFormat *ijkav_find_input_format(const char *iformat_name)
+#define IJK_REGISTER_PROTOCOL(x)                                                    \
+{                                                                                   \
+    extern URLProtocol ijkimp_ff_##x##_protocol;                                    \
+    int ijkav_register_##x##_protocol(URLProtocol *protocol, int protocol_size);    \
+    ijkav_register_##x##_protocol(&ijkimp_ff_##x##_protocol, sizeof(URLProtocol));  \
+}
+
+static const struct AVInputFormat *ijkav_find_input_format(const char *iformat_name)
 {
-    AVInputFormat *fmt = NULL;
-    if (!iformat_name)
-        return NULL;
-    while ((fmt = av_iformat_next(fmt))) {
-        if (!fmt->name)
-            continue;
-        if (!strcmp(iformat_name, fmt->name))
+    const AVInputFormat *fmt = NULL;
+    void *i = 0;
+    while ((fmt = av_demuxer_iterate(&i)))
+        if (av_match_name(iformat_name, fmt->name))
             return fmt;
-    }
     return NULL;
 }
 
@@ -59,20 +60,20 @@ static void ijkav_register_input_format(AVInputFormat *iformat)
         av_log(NULL, AV_LOG_WARNING, "skip     demuxer : %s (duplicated)\n", iformat->name);
     } else {
         av_log(NULL, AV_LOG_INFO,    "register demuxer : %s\n", iformat->name);
-        av_register_input_format(iformat);
+    }
+    
+    if(!ijkav_find_input_format(iformat->name)){
+        //    av_register_input_format(iformat);
     }
 }
 
 
-void ijkav_register_all(void)
-{
+void ijkav_register_all(void){
     static int initialized;
 
-    if (initialized)
-        return;
+    if (initialized) return;
+    
     initialized = 1;
-
-    av_register_all();
 
     /* protocols */
     av_log(NULL, AV_LOG_INFO, "===== custom modules begin =====\n");

@@ -28,6 +28,8 @@
 
 #include "libavutil/application.h"
 
+#include "ijkplayer/ijkavutil/ijkdict.h"
+
 typedef struct Context {
     AVClass        *class;
     URLContext     *inner;
@@ -42,6 +44,7 @@ static int ijksegment_open(URLContext *h, const char *arg, int flags, AVDictiona
     Context *c = h->priv_data;
     AVAppIOControl io_control = {0};
     AVApplicationContext *app_ctx = (AVApplicationContext *)av_dict_strtoptr(c->app_ctx_intptr);
+
     int ret = -1;
     int segment_index = -1;
 

@@ -22,7 +22,9 @@
 #include "libavformat/avformat.h"
 #include "libavformat/url.h"
 #include "libavformat/avio_internal.h"
-#include "libavformat/id3v2.h"
+#include "libavformat/internal.h"
+
+//#include "libavformat/id3v2.h"
 #include "libavformat/flv.h"
 
 #include "ijksdl/ijksdl_thread.h"

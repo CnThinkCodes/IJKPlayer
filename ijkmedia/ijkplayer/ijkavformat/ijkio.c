@@ -55,6 +55,7 @@ static int ijkio_open(URLContext *h, const char *arg, int flags, AVDictionary **
         return -1;
 
     IjkIOManagerContext *manager_ctx = (IjkIOManagerContext *)av_dict_strtoptr(c->io_manager_ctx_intptr);
+    
     manager_ctx->ijkio_interrupt_callback = (IjkAVIOInterruptCB *)&(h->interrupt_callback);
 
     av_strstart(arg, "ijkio:", &arg);
@@ -80,6 +81,7 @@ static int ijkio_read(URLContext *h, unsigned char *buf, int size)
     if (!c || !c->io_manager_ctx_intptr)
         return -1;
 
+    
     ((IjkIOManagerContext *)(av_dict_strtoptr(c->io_manager_ctx_intptr)))->cur_ffmpeg_ctx  = c;
     return ijkio_manager_io_read((IjkIOManagerContext *)(av_dict_strtoptr(c->io_manager_ctx_intptr)), buf, size);
 }
