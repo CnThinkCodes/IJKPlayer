@@ -623,7 +623,7 @@ static inline void DuplicatePkt(Ijk_VideoToolBox_Opaque* context, const AVPacket
         ResetPktBuffer(context);
     }
     AVPacket* avpkt = &context->m_buffer_packet[context->m_buffer_deep];
-    av_copy_packet(avpkt, pkt);
+    av_packet_copy_props(avpkt, pkt);
     context->m_buffer_deep++;
 }
 
@@ -641,7 +641,7 @@ static int decode_video(Ijk_VideoToolBox_Opaque* context, AVCodecContext *avctx,
 
     if (context->ffp->vtb_handle_resolution_change &&
         context->codecpar->codec_id == AV_CODEC_ID_H264) {
-        size_data = av_packet_get_side_data(avpkt, AV_PKT_DATA_NEW_EXTRADATA, &size_data_size);
+        size_data = av_packet_get_side_data(avpkt, AV_PKT_DATA_NEW_EXTRADATA, (size_t *)&size_data_size);
         // minimum avcC(sps,pps) = 7
         if (size_data && size_data_size > 7) {
             int             got_picture = 0;
@@ -666,9 +666,15 @@ static int decode_video(Ijk_VideoToolBox_Opaque* context, AVCodecContext *avctx,
                 avcodec_free_context(&new_avctx);
                 return ret;
             }
-
-            ret = avcodec_decode_video2(new_avctx, frame, &got_picture, avpkt);
-            if (ret < 0) {
+            
+            ret = avcodec_send_packet(new_avctx, avpkt);
+            if(ret){
+                avcodec_free_context(&new_avctx);
+                return ret;
+            }
+            
+            ret = avcodec_receive_frame(new_avctx, frame);
+            if (ret) {
                 avcodec_free_context(&new_avctx);
                 return ret;
             } else {
@@ -855,7 +861,9 @@ int videotoolbox_sync_decode_frame(Ijk_VideoToolBox_Opaque* context)
                 }
             } while (ffp_is_flush_packet(&pkt) || d->queue->serial != d->pkt_serial);
 
-            av_packet_split_side_data(&pkt);
+
+            // av_packet_split_side_data(&pkt);
+            
 
             av_packet_unref(&d->pkt);
             d->pkt_temp = d->pkt = pkt;

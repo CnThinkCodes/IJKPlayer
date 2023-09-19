@@ -37,6 +37,8 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    
+    self.textView.text = @"https://testmapps.1905.com/ttt.mp4";
 }
 
 - (void)onClickPlayButton {
