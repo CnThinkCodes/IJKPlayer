@@ -48,6 +48,11 @@ struct SDL_VoutOverlay {
 
     SDL_Class               *opaque_class;
     SDL_VoutOverlay_Opaque  *opaque;
+    
+    void                    *metaData;
+    void                    *vividCure;
+    void                    *GTMcurve2;
+
 
     void    (*free_l)(SDL_VoutOverlay *overlay);
     int     (*lock)(SDL_VoutOverlay *overlay);

@@ -21,7 +21,7 @@
  */
 
 #include "ff_ffplay.h"
-
+#include "hdrvivid_process.h"
 /**
  * @file
  * simple media player based on the FFmpeg libraries
@@ -48,6 +48,9 @@
 #include "libavutil/avassert.h"
 #include "libavutil/time.h"
 #include "libavformat/avformat.h"
+#include "libavutil/hdr_dynamic_vivid_metadata.h"
+#include "hdrvivid/hdrvivid_process.h"
+
 #if CONFIG_AVDEVICE
 #include "libavdevice/avdevice.h"
 #endif
@@ -165,6 +168,12 @@ static int packet_queue_put_private(PacketQueue *q, AVPacket *pkt)
 #ifdef FFP_MERGE
     pkt1 = av_malloc(sizeof(MyAVPacketList));
 #else
+    
+    
+    if(pkt->side_data && AV_PKT_DATA_MASTERING_DISPLAY_METADATA == pkt->side_data->type){
+        printf("side data: %d", (int)pkt->side_data->type);
+    }
+    
     pkt1 = q->recycle_pkt;
     if (pkt1) {
         q->recycle_pkt = pkt1->next;
@@ -597,6 +606,7 @@ static int decoder_decode_frame(FFPlayer *ffp, Decoder *d, AVFrame *frame, AVSub
                 switch (d->avctx->codec_type) {
                     case AVMEDIA_TYPE_VIDEO:
                         ret = avcodec_receive_frame(d->avctx, frame);
+                        
                         if (ret >= 0) {
                             ffp->stat.vdps = SDL_SpeedSamplerAdd(&ffp->vdps_sampler, FFP_SHOW_VDPS_AVCODEC, "vdps[avcodec]");
                             if (ffp->decoder_reorder_pts == -1) {
@@ -685,7 +695,7 @@ static void decoder_destroy(Decoder *d) {
 static void frame_queue_unref_item(Frame *vp)
 {
     av_frame_unref(vp->frame);
-    SDL_VoutUnrefYUVOverlay(vp->bmp);
+    SDL_VoutUnrefYUVOverlay(vp->overlay);
     avsubtitle_free(&vp->sub);
 }
 
@@ -840,9 +850,9 @@ static void decoder_abort(Decoder *d, FrameQueue *fq)
 
 static void free_picture(Frame *vp)
 {
-    if (vp->bmp) {
-        SDL_VoutFreeYUVOverlay(vp->bmp);
-        vp->bmp = NULL;
+    if (vp->overlay) {
+        SDL_VoutFreeYUVOverlay(vp->overlay);
+        vp->overlay = NULL;
     }
 }
 
@@ -898,8 +908,8 @@ static void video_image_display2(FFPlayer *ffp)
     Frame *sp = NULL;
 
     vp = frame_queue_peek_last(&is->pictq);
-
-    if (vp->bmp) {
+    
+    if (vp->overlay) {
         if (is->subtitle_st) {
             if (frame_queue_nb_remaining(&is->subpq) > 0) {
                 sp = frame_queue_peek(&is->subpq);
@@ -930,7 +940,7 @@ static void video_image_display2(FFPlayer *ffp)
                 SDL_Delay(20);
             }
         }
-        SDL_VoutDisplayYUVOverlay(ffp->vout, vp->bmp);
+        SDL_VoutDisplayYUVOverlay(ffp->vout, vp->overlay);
         ffp->stat.vfps = SDL_SpeedSamplerAdd(&ffp->vfps_sampler, FFP_SHOW_VFPS_FFPLAY, "vfps[ffplay]");
         if (!ffp->first_video_frame_rendered) {
             ffp->first_video_frame_rendered = 1;
@@ -1494,15 +1504,14 @@ static void alloc_picture(FFPlayer *ffp, int frame_format)
 #endif
 
     vp = &is->pictq.queue[is->pictq.windex];
-
     free_picture(vp);
 
 #ifdef FFP_MERGE
     video_open(is, vp);
 #endif
-
+    
     SDL_VoutSetOverlayFormat(ffp->vout, ffp->overlay_format);
-    vp->bmp = SDL_Vout_CreateOverlay(vp->width, vp->height,
+    vp->overlay = SDL_Vout_CreateOverlay(vp->width, vp->height,
                                    frame_format,
                                    ffp->vout);
 #ifdef FFP_MERGE
@@ -1514,7 +1523,7 @@ static void alloc_picture(FFPlayer *ffp, int frame_format)
     if (realloc_texture(&vp->bmp, sdl_format, vp->width, vp->height, SDL_BLENDMODE_NONE, 0) < 0) {
 #else
     /* RV16, RV32 contains only one plane */
-    if (!vp->bmp || (!vp->bmp->is_private && vp->bmp->pitches[0] < vp->width)) {
+    if (!vp->overlay || (!vp->overlay->is_private && vp->overlay->pitches[0] < vp->width)) {
 #endif
         /* SDL allocates a buffer smaller than requested if the video
          * overlay hardware is unable to support the requested size. */
@@ -1642,7 +1651,7 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts, double d
 #endif
 
     /* alloc or resize hardware picture buffer */
-    if (!vp->bmp || !vp->allocated ||
+    if (!vp->overlay || !vp->allocated ||
         vp->width  != src_frame->width ||
         vp->height != src_frame->height ||
         vp->format != src_frame->format) {
@@ -1658,15 +1667,15 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts, double d
         /* the allocation must be done in the main thread to avoid
            locking problems. */
         alloc_picture(ffp, src_frame->format);
-
+        
         if (is->videoq.abort_request)
             return -1;
     }
 
     /* if the frame is not skipped, then display it */
-    if (vp->bmp) {
+    if (vp->overlay) {
         /* get a pointer on the bitmap */
-        SDL_VoutLockYUVOverlay(vp->bmp);
+        SDL_VoutLockYUVOverlay(vp->overlay);
 
 #ifdef FFP_MERGE
 #if CONFIG_AVFILTER
@@ -1678,20 +1687,20 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts, double d
 #endif
 #endif
         // FIXME: set swscale options
-        if (SDL_VoutFillFrameYUVOverlay(vp->bmp, src_frame) < 0) {
+        if (SDL_VoutFillFrameYUVOverlay(vp->overlay, src_frame) < 0) {
             av_log(NULL, AV_LOG_FATAL, "Cannot initialize the conversion context\n");
             exit(1);
         }
         /* update the bitmap content */
-        SDL_VoutUnlockYUVOverlay(vp->bmp);
+        SDL_VoutUnlockYUVOverlay(vp->overlay);
 
         vp->pts = pts;
         vp->duration = duration;
         vp->pos = pos;
         vp->serial = serial;
         vp->sar = src_frame->sample_aspect_ratio;
-        vp->bmp->sar_num = vp->sar.num;
-        vp->bmp->sar_den = vp->sar.den;
+        vp->overlay->sar_num = vp->sar.num;
+        vp->overlay->sar_den = vp->sar.den;
 
 #ifdef FFP_MERGE
         av_frame_move_ref(vp->frame, src_frame);
@@ -2235,6 +2244,7 @@ static int ffplay_video_thread(void *arg)
 
     for (;;) {
         ret = get_video_frame(ffp, frame);
+        
         if (ret < 0)
             goto the_end;
         if (!ret)
@@ -2245,7 +2255,7 @@ static int ffplay_video_thread(void *arg)
                 av_frame_unref(frame);
                 continue;
             }
-
+            
             last_dst_pts = dst_pts;
 
             if (dst_pts < 0) {
@@ -2934,7 +2944,7 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
         }
 #else
         sample_rate    = avctx->sample_rate;
-        nb_channels    = avctx->channels;
+        nb_channels    = avctx->ch_layout.nb_channels;
         channel_layout = avctx->channel_layout;
 #endif
 
@@ -2972,7 +2982,7 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
 
         if (ffp->async_init_decoder) {
             while (!is->initialized_decoder) {
-                SDL_Delay(5);
+                SDL_Delay(5); // 这里可能延迟
             }
             if (ffp->node_vdec) {
                 is->viddec.avctx = avctx;
@@ -3251,7 +3261,6 @@ static int read_thread(void *arg)
                 st_index[type] = i;
 
         // choose first h264
-
         if (type == AVMEDIA_TYPE_VIDEO) {
             enum AVCodecID codec_id = st->codecpar->codec_id;
             video_stream_count++;
@@ -3663,6 +3672,7 @@ static int read_thread(void *arg)
 }
 
 static int video_refresh_thread(void *arg);
+            
 static VideoState *stream_open(FFPlayer *ffp, const char *filename, AVInputFormat *iformat)
 {
     assert(!ffp->is);
@@ -4215,6 +4225,9 @@ void ffp_set_overlay_format(FFPlayer *ffp, int chroma_fourcc)
             ffp->overlay_format = chroma_fourcc;
             break;
 #endif
+        case SDL_FCC_I420P10LE:
+            ffp->overlay_format = chroma_fourcc;
+            break;
         default:
             av_log(ffp, AV_LOG_ERROR, "ffp_set_overlay_format: unknown chroma fourcc: %d\n", chroma_fourcc);
             break;

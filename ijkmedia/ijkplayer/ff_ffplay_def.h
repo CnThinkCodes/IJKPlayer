@@ -219,7 +219,7 @@ typedef struct Frame {
 #ifdef FFP_MERGE
     SDL_Texture *bmp;
 #else
-    SDL_VoutOverlay *bmp;
+    SDL_VoutOverlay *overlay;
 #endif
     int allocated;
     int width;
@@ -227,6 +227,8 @@ typedef struct Frame {
     int format;
     AVRational sar;
     int uploaded;
+
+    // TODO
 } Frame;
 
 typedef struct FrameQueue {

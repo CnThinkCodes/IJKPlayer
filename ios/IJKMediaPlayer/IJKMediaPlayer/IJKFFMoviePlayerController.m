@@ -51,6 +51,7 @@ static const char *kIJKFFRequiredFFmpegVersion = "n5.1.3-ijk";
 @implementation IJKFFMoviePlayerController {
     IjkMediaPlayer *_mediaPlayer;
     IJKSDLGLView *_glView;
+    IJKSDLMetalView *_metalView;
     IJKFFMoviePlayerMessagePool *_msgPool;
     NSString *_urlString;
 
@@ -213,9 +214,14 @@ void IJKFFIOStatCompleteRegister(void (*cb)(const char *url,
         ijkmp_set_option_int(_mediaPlayer, IJKMP_OPT_CATEGORY_PLAYER, "start-on-prepared", _shouldAutoplay ? 1 : 0);
 
         // init video sink
-        _glView = [[IJKSDLGLView alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
-        _glView.isThirdGLView = NO;
-        _view = _glView;
+//        _glView = [[IJKSDLGLView alloc] initWithFrame:UIScreen.mainScreen.bounds];
+//        _glView.isThirdGLView = NO;
+        
+        _metalView = [[IJKSDLMetalView alloc] initWithFrame:UIScreen.mainScreen.bounds];
+        _metalView.isThirdGLView = NO;
+        _view = _metalView;
+
+//        _view = _glView;
         _hudViewController = [[IJKSDLHudViewController alloc] init];
         [_hudViewController setRect:_glView.frame];
         _shouldShowHudView = NO;
@@ -237,7 +243,10 @@ void IJKFFIOStatCompleteRegister(void (*cb)(const char *url,
         
         self.shouldShowHudView = options.showHudView;
 
-        ijkmp_ios_set_glview(_mediaPlayer, _glView);
+//        ijkmp_ios_set_glview(_mediaPlayer, _glView);
+        
+        ijkmp_ios_set_glview(_mediaPlayer, _metalView);
+
         ijkmp_set_option(_mediaPlayer, IJKMP_OPT_CATEGORY_PLAYER, "overlay-format", "fcc-_es2");
 #ifdef DEBUG
         [IJKFFMoviePlayerController setLogLevel:k_IJK_LOG_DEBUG];

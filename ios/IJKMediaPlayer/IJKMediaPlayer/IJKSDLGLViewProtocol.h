@@ -39,12 +39,21 @@ struct IJKOverlay {
     CVPixelBufferRef pixel_buffer;
 };
 
+
 @protocol IJKSDLGLViewProtocol <NSObject>
-- (UIImage*) snapshot;
-@property(nonatomic, readonly) CGFloat  fps;
-@property(nonatomic)        CGFloat  scaleFactor;
-@property(nonatomic)        BOOL  isThirdGLView;
-- (void) display_pixels: (IJKOverlay *) overlay;
+
+- (UIImage*)snapshot;
+
+@property(nonatomic, readonly) CGFloat fps;
+
+@property(nonatomic) CGFloat  scaleFactor;
+
+@property(nonatomic) BOOL  isThirdGLView;
+
+- (void)display_pixels:(IJKOverlay *)overlay;
+
+- (void)display:(void *)overlay;
+
 @end
 
 #endif /* IJKSDLGLViewProtocol_h */

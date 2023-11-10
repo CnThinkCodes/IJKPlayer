@@ -77,24 +77,28 @@ typedef struct IJK_GLES2_Renderer
     GLsizei last_buffer_width;
 } IJK_GLES2_Renderer;
 
-typedef struct IJK_GLES_Matrix
-{
+typedef struct IJK_GLES_Matrix{
     GLfloat m[16];
 } IJK_GLES_Matrix;
+
 void IJK_GLES2_loadOrtho(IJK_GLES_Matrix *matrix, GLfloat left, GLfloat right, GLfloat bottom, GLfloat top, GLfloat near, GLfloat far);
 
 const char *IJK_GLES2_getVertexShader_default();
 const char *IJK_GLES2_getFragmentShader_yuv420p();
 const char *IJK_GLES2_getFragmentShader_yuv444p10le();
+const char *IJK_GLES2_getFragmentShader_yuv420p10le();
 const char *IJK_GLES2_getFragmentShader_yuv420sp();
 const char *IJK_GLES2_getFragmentShader_rgb();
 
+const GLfloat *IJK_GLES2_getColorMatrix_bt2020();
 const GLfloat *IJK_GLES2_getColorMatrix_bt709();
 const GLfloat *IJK_GLES2_getColorMatrix_bt601();
+
 
 IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_base(const char *fragment_shader_source);
 IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_yuv420p();
 IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_yuv444p10le();
+IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_yuv420p10le();
 IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_yuv420sp();
 IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_yuv420sp_vtb(SDL_VoutOverlay *overlay);
 IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_rgb565();

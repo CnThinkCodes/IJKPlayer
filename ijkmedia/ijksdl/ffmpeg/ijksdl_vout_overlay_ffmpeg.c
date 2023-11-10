@@ -33,6 +33,9 @@
 #include "../ijksdl_video.h"
 #include "ijksdl_inc_ffmpeg.h"
 #include "ijksdl_image_convert.h"
+#include "libavutil/hdr_dynamic_vivid_metadata.h"
+#include "libavutil/mastering_display_metadata.h"
+#include "hdrvivid/hdrvivid_process.h"
 
 struct SDL_VoutOverlay_Opaque {
     SDL_mutex *mutex;
@@ -131,6 +134,21 @@ static void func_free_l(SDL_VoutOverlay *overlay)
 
     if (opaque->mutex)
         SDL_DestroyMutex(opaque->mutex);
+    
+    if (overlay->metaData){
+        free(overlay->metaData);
+        overlay->metaData = NULL;
+    }
+    
+    if(overlay->vividCure){
+        free(overlay->vividCure);
+        overlay->vividCure = NULL;
+    }
+    
+    if(overlay->GTMcurve2){
+        free(overlay->GTMcurve2);
+        overlay->GTMcurve2 = NULL;
+    }
 
     SDL_VoutOverlay_FreeInternal(overlay);
 }
@@ -157,6 +175,93 @@ static int func_unlock(SDL_VoutOverlay *overlay)
     return SDL_UnlockMutex(opaque->mutex);
 }
 
+#define REFERENCE_WHITE 100.0f
+
+static double ff_determine_signal_peak(AVFrame *in)
+{
+    AVFrameSideData *sd = av_frame_get_side_data(in, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+    double peak = 0;
+
+    if (sd) {
+        AVContentLightMetadata *clm = (AVContentLightMetadata *)sd->data;
+        peak = clm->MaxCLL / REFERENCE_WHITE;
+    }
+
+    sd = av_frame_get_side_data(in, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+    if (!peak && sd) {
+        AVMasteringDisplayMetadata *metadata = (AVMasteringDisplayMetadata *)sd->data;
+        if (metadata->has_luminance)
+            peak = av_q2d(metadata->max_luminance) / REFERENCE_WHITE;
+    }
+
+    // For untagged source, use peak of 10000 if SMPTE ST.2084
+    // otherwise assume HLG with reference display peak 1000.
+    if (!peak)
+        peak = in->color_trc == AVCOL_TRC_SMPTE2084 ? 100.0f : 10.0f;
+
+    return peak;
+}
+
+static int _attach_vivid_metadata(SDL_VoutOverlay *overlay, const AVFrame *frame){
+    if(overlay->metaData){
+        free(overlay->metaData);
+        overlay->metaData = NULL;
+    }
+    
+    
+    
+    for (int i = 0; i < frame->nb_side_data; i++) {
+        AVFrameSideData *sideData = frame->side_data[i];
+        if(sideData->type == AV_FRAME_DATA_DYNAMIC_HDR_VIVID){
+            AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_DYNAMIC_HDR_VIVID);
+            AVDynamicHDRVivid* vividSideMetaData = (AVDynamicHDRVivid*)sd->data;
+            IJKHDRVividMetadata *pMetaData = (IJKHDRVividMetadata *)mallocz(sizeof(IJKHDRVividMetadata));
+            int ret = initHDRVividMetadata(vividSideMetaData, pMetaData);
+            if(ret) goto faild;
+            overlay->metaData = pMetaData;
+            IJKHDRVividCurve *curve = (IJKHDRVividCurve *)mallocz(sizeof(IJKHDRVividCurve));
+            if(curve == NULL) goto faild;
+            InitCurve(curve);
+            double MasterDisplayPQ = PQinverse(1000 / 10000.0);
+            
+            float *GTMcurve2 = (float *)mallocz(sizeof(float) * (CURVELEN + 1));
+            if(GTMcurve2 == NULL) goto faild;
+            InitParams(100, pMetaData, MasterDisplayPQ, curve, GTMcurve2);
+            overlay->vividCure = curve;
+            overlay->GTMcurve2 = GTMcurve2;
+            
+//            for (int i = 0; i < CURVELEN; i++) {
+//                for
+//            }
+        }
+    }
+    
+    double a = ff_determine_signal_peak(frame);
+    
+    return 0;
+    
+    
+faild:
+    if(overlay->metaData){
+        free(overlay->metaData);
+        overlay->metaData = NULL;
+    }
+    
+    if(overlay->vividCure){
+        free(overlay->vividCure);
+        overlay->vividCure = NULL;
+    }
+    
+    if(overlay->GTMcurve2){
+        free(overlay->GTMcurve2);
+        overlay->GTMcurve2 = NULL;
+    }
+    
+    return -1;
+}
+
+
+
 static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame)
 {
     assert(overlay);
@@ -182,6 +287,18 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame)
                 dst_format = AV_PIX_FMT_YUV420P;
             }
             break;
+        case SDL_FCC_I420P10LE:
+            if(frame->format == AV_PIX_FMT_YUV420P10LE){
+                use_linked_frame = 1;
+                dst_format = AV_PIX_FMT_YUV444P10LE;
+            } else {
+                dst_format = AV_PIX_FMT_YUV444P10LE;
+            }
+                        
+            // 附加 metadata
+            _attach_vivid_metadata(overlay, frame);
+            break;
+            
         case SDL_FCC_I444P10LE:
             if (frame->format == AV_PIX_FMT_YUV444P10LE) {
                 // ALOGE("direct draw frame");
@@ -206,8 +323,7 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame)
                   (char*)&overlay->format, overlay->format);
             return -1;
     }
-
-
+    
     // setup frame
     if (use_linked_frame) {
         // linked frame
@@ -276,6 +392,7 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame)
     return 0;
 }
 
+
 static SDL_Class g_vout_overlay_ffmpeg_class = {
     .name = "FFmpegVoutOverlay",
 };
@@ -283,12 +400,16 @@ static SDL_Class g_vout_overlay_ffmpeg_class = {
 #ifndef __clang_analyzer__
 SDL_VoutOverlay *SDL_VoutFFmpeg_CreateOverlay(int width, int height, int frame_format, SDL_Vout *display)
 {
+    // 这里是决定输出格式
     Uint32 overlay_format = display->overlay_format;
     switch (overlay_format) {
         case SDL_FCC__GLES2: {
             switch (frame_format) {
                 case AV_PIX_FMT_YUV444P10LE:
                     overlay_format = SDL_FCC_I444P10LE;
+                    break;
+                case AV_PIX_FMT_YUV420P10LE:
+                    overlay_format = SDL_FCC_I420P10LE;
                     break;
                 case AV_PIX_FMT_YUV420P:
                 case AV_PIX_FMT_YUVJ420P:
@@ -327,74 +448,94 @@ SDL_VoutOverlay *SDL_VoutFFmpeg_CreateOverlay(int width, int height, int frame_f
     overlay->lock               = func_lock;
     overlay->unlock             = func_unlock;
     overlay->func_fill_frame    = func_fill_frame;
+    overlay->GTMcurve2 = NULL;
+    overlay->metaData = NULL;
+    overlay->vividCure = NULL;
 
     enum AVPixelFormat ff_format = AV_PIX_FMT_NONE;
     int buf_width = width;
     int buf_height = height;
     switch (overlay_format) {
-    case SDL_FCC_I420:
-    case SDL_FCC_YV12: {
-        ff_format = AV_PIX_FMT_YUV420P;
-        // FIXME: need runtime config
+        case SDL_FCC_I420:
+        case SDL_FCC_YV12: {
+            ff_format = AV_PIX_FMT_YUV420P;
+            // FIXME: need runtime config
 #if defined(__ANDROID__)
-        // 16 bytes align pitch for arm-neon image-convert
-        buf_width = IJKALIGN(width, 16); // 1 bytes per pixel for Y-plane
+            // 16 bytes align pitch for arm-neon image-convert
+            buf_width = IJKALIGN(width, 16); // 1 bytes per pixel for Y-plane
 #elif defined(__APPLE__)
-        // 2^n align for width
-        buf_width = width;
-        if (width > 0)
-            buf_width = 1 << (sizeof(int) * 8 - __builtin_clz(width));
+            // 2^n align for width
+            buf_width = width;
+            if (width > 0)
+                buf_width = 1 << (sizeof(int) * 8 - __builtin_clz(width));
 #else
-        buf_width = IJKALIGN(width, 16); // unknown platform
+            buf_width = IJKALIGN(width, 16); // unknown platform
 #endif
-        opaque->planes = 3;
-        break;
-    }
-    case SDL_FCC_I444P10LE: {
-        ff_format = AV_PIX_FMT_YUV444P10LE;
-        // FIXME: need runtime config
+            opaque->planes = 3;
+            break;
+        }
+        case SDL_FCC_I420P10LE:{
+            ff_format = AV_PIX_FMT_YUV420P10LE;
+            // FIXME: need runtime config
 #if defined(__ANDROID__)
-        // 16 bytes align pitch for arm-neon image-convert
-        buf_width = IJKALIGN(width, 16); // 1 bytes per pixel for Y-plane
+            // 16 bytes align pitch for arm-neon image-convert
+            buf_width = IJKALIGN(width, 16); // 1 bytes per pixel for Y-plane
 #elif defined(__APPLE__)
-        // 2^n align for width
-        buf_width = width;
-        if (width > 0)
-            buf_width = 1 << (sizeof(int) * 8 - __builtin_clz(width));
+            // 2^n align for width
+            buf_width = width;
+            if (width > 0)
+                buf_width = 1 << (sizeof(int) * 8 - __builtin_clz(width));
 #else
-        buf_width = IJKALIGN(width, 16); // unknown platform
+            buf_width = IJKALIGN(width, 16); // unknown platform
 #endif
-        opaque->planes = 3;
-        break;
-    }
-    case SDL_FCC_RV16: {
-        ff_format = AV_PIX_FMT_RGB565;
-        buf_width = IJKALIGN(width, 8); // 2 bytes per pixel
-        opaque->planes = 1;
-        break;
-    }
-    case SDL_FCC_RV24: {
-        ff_format = AV_PIX_FMT_RGB24;
+            opaque->planes = 3;
+            break;
+        }
+        case SDL_FCC_I444P10LE: {
+            ff_format = AV_PIX_FMT_YUV444P10LE;
+            // FIXME: need runtime config
 #if defined(__ANDROID__)
-        // 16 bytes align pitch for arm-neon image-convert
-        buf_width = IJKALIGN(width, 16); // 1 bytes per pixel for Y-plane
+            // 16 bytes align pitch for arm-neon image-convert
+            buf_width = IJKALIGN(width, 16); // 1 bytes per pixel for Y-plane
 #elif defined(__APPLE__)
-        buf_width = width;
+            // 2^n align for width
+            buf_width = width;
+            if (width > 0)
+                buf_width = 1 << (sizeof(int) * 8 - __builtin_clz(width));
 #else
-        buf_width = IJKALIGN(width, 16); // unknown platform
+            buf_width = IJKALIGN(width, 16); // unknown platform
 #endif
-        opaque->planes = 1;
-        break;
-    }
-    case SDL_FCC_RV32: {
-        ff_format = AV_PIX_FMT_0BGR32;
-        buf_width = IJKALIGN(width, 4); // 4 bytes per pixel
-        opaque->planes = 1;
-        break;
-    }
-    default:
-        ALOGE("SDL_VoutFFmpeg_CreateOverlay(...): unknown format %.4s(0x%x)\n", (char*)&overlay_format, overlay_format);
-        goto fail;
+            opaque->planes = 3;
+            break;
+        }
+        case SDL_FCC_RV16: {
+            ff_format = AV_PIX_FMT_RGB565;
+            buf_width = IJKALIGN(width, 8); // 2 bytes per pixel
+            opaque->planes = 1;
+            break;
+        }
+        case SDL_FCC_RV24: {
+            ff_format = AV_PIX_FMT_RGB24;
+#if defined(__ANDROID__)
+            // 16 bytes align pitch for arm-neon image-convert
+            buf_width = IJKALIGN(width, 16); // 1 bytes per pixel for Y-plane
+#elif defined(__APPLE__)
+            buf_width = width;
+#else
+            buf_width = IJKALIGN(width, 16); // unknown platform
+#endif
+            opaque->planes = 1;
+            break;
+        }
+        case SDL_FCC_RV32: {
+            ff_format = AV_PIX_FMT_0BGR32;
+            buf_width = IJKALIGN(width, 4); // 4 bytes per pixel
+            opaque->planes = 1;
+            break;
+        }
+        default:
+            ALOGE("SDL_VoutFFmpeg_CreateOverlay(...): unknown format %.4s(0x%x)\n", (char*)&overlay_format, overlay_format);
+            goto fail;
     }
 
     opaque->managed_frame = opaque_setup_frame(opaque, ff_format, buf_width, buf_height);

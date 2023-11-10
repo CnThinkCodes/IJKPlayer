@@ -29,17 +29,18 @@
 #include "ijksdl/ffmpeg/ijksdl_vout_overlay_ffmpeg.h"
 #include "ijksdl_vout_overlay_videotoolbox.h"
 #import "IJKSDLGLView.h"
+#include "ijksdl/ijksdl_vout.h"
 
 typedef struct SDL_VoutSurface_Opaque {
     SDL_Vout *vout;
 } SDL_VoutSurface_Opaque;
 
 struct SDL_Vout_Opaque {
-    IJKSDLGLView *gl_view;
+//    IJKSDLGLView *gl_view;
+    UIView<IJKSDLGLViewProtocol> *displayView;
 };
 
-static SDL_VoutOverlay *vout_create_overlay_l(int width, int height, int frame_format, SDL_Vout *vout)
-{
+static SDL_VoutOverlay *vout_create_overlay_l(int width, int height, int frame_format, SDL_Vout *vout){
     switch (frame_format) {
         case IJK_AV_PIX_FMT__VIDEO_TOOLBOX:
             return SDL_VoutVideoToolBox_CreateOverlay(width, height, vout);
@@ -48,38 +49,35 @@ static SDL_VoutOverlay *vout_create_overlay_l(int width, int height, int frame_f
     }
 }
 
-static SDL_VoutOverlay *vout_create_overlay(int width, int height, int frame_format, SDL_Vout *vout)
-{
+static SDL_VoutOverlay *vout_create_overlay(int width, int height, int frame_format, SDL_Vout *vout){
     SDL_LockMutex(vout->mutex);
     SDL_VoutOverlay *overlay = vout_create_overlay_l(width, height, frame_format, vout);
     SDL_UnlockMutex(vout->mutex);
     return overlay;
 }
 
-static void vout_free_l(SDL_Vout *vout)
-{
+static void vout_free_l(SDL_Vout *vout){
     if (!vout)
         return;
 
     SDL_Vout_Opaque *opaque = vout->opaque;
     if (opaque) {
-        if (opaque->gl_view) {
+        if (opaque->displayView) {
             // TODO: post to MainThread?
-            [opaque->gl_view release];
-            opaque->gl_view = nil;
+            [opaque->displayView release];
+            opaque->displayView = nil;
         }
     }
 
     SDL_Vout_FreeInternal(vout);
 }
 
-static int vout_display_overlay_l(SDL_Vout *vout, SDL_VoutOverlay *overlay)
-{
+static int vout_display_overlay_l(SDL_Vout *vout, SDL_VoutOverlay *overlay){
     SDL_Vout_Opaque *opaque = vout->opaque;
-    IJKSDLGLView *gl_view = opaque->gl_view;
+    UIView<IJKSDLGLViewProtocol> *displayView = opaque->displayView;
 
-    if (!gl_view) {
-        ALOGE("vout_display_overlay_l: NULL gl_view\n");
+    if (!displayView) {
+        ALOGE("vout_display_overlay_l: NULL displayView\n");
         return -1;
     }
 
@@ -93,7 +91,7 @@ static int vout_display_overlay_l(SDL_Vout *vout, SDL_VoutOverlay *overlay)
         return -1;
     }
 
-    if (gl_view.isThirdGLView) {
+    if (displayView.isThirdGLView) {
         IJKOverlay ijk_overlay;
 
         ijk_overlay.w = overlay->w;
@@ -109,17 +107,16 @@ static int vout_display_overlay_l(SDL_Vout *vout, SDL_VoutOverlay *overlay)
             ijk_overlay.pixel_buffer = SDL_VoutOverlayVideoToolBox_GetCVPixelBufferRef(overlay);
         }
 #endif
-        if ([gl_view respondsToSelector:@selector(display_pixels:)]) {
-             [gl_view display_pixels:&ijk_overlay];
+        if ([displayView respondsToSelector:@selector(display_pixels:)]) {
+             [displayView display_pixels:&ijk_overlay];
         }
     } else {
-        [gl_view display:overlay];
+        [displayView display:overlay];
     }
     return 0;
 }
 
-static int vout_display_overlay(SDL_Vout *vout, SDL_VoutOverlay *overlay)
-{
+static int vout_display_overlay(SDL_Vout *vout, SDL_VoutOverlay *overlay){
     @autoreleasepool {
         SDL_LockMutex(vout->mutex);
         int retval = vout_display_overlay_l(vout, overlay);
@@ -128,14 +125,13 @@ static int vout_display_overlay(SDL_Vout *vout, SDL_VoutOverlay *overlay)
     }
 }
 
-SDL_Vout *SDL_VoutIos_CreateForGLES2()
-{
+SDL_Vout *SDL_VoutIos_CreateForGLES2(){
     SDL_Vout *vout = SDL_Vout_CreateInternal(sizeof(SDL_Vout_Opaque));
     if (!vout)
         return NULL;
 
     SDL_Vout_Opaque *opaque = vout->opaque;
-    opaque->gl_view = nil;
+    opaque->displayView = nil;
     vout->create_overlay = vout_create_overlay;
     vout->free_l = vout_free_l;
     vout->display_overlay = vout_display_overlay;
@@ -143,24 +139,22 @@ SDL_Vout *SDL_VoutIos_CreateForGLES2()
     return vout;
 }
 
-static void SDL_VoutIos_SetGLView_l(SDL_Vout *vout, IJKSDLGLView *view)
-{
+static void SDL_VoutIos_SetGLView_l(SDL_Vout *vout, UIView<IJKSDLGLViewProtocol> *view){
     SDL_Vout_Opaque *opaque = vout->opaque;
 
-    if (opaque->gl_view == view)
+    if (opaque->displayView == view)
         return;
 
-    if (opaque->gl_view) {
-        [opaque->gl_view release];
-        opaque->gl_view = nil;
+    if (opaque->displayView) {
+        [opaque->displayView release];
+        opaque->displayView = nil;
     }
 
     if (view)
-        opaque->gl_view = [view retain];
+        opaque->displayView = [view retain];
 }
 
-void SDL_VoutIos_SetGLView(SDL_Vout *vout, IJKSDLGLView *view)
-{
+void SDL_VoutIos_SetGLView(SDL_Vout *vout, UIView<IJKSDLGLViewProtocol> *view){
     SDL_LockMutex(vout->mutex);
     SDL_VoutIos_SetGLView_l(vout, view);
     SDL_UnlockMutex(vout->mutex);

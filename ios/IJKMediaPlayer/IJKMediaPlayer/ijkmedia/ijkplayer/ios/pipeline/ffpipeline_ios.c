@@ -24,7 +24,7 @@
 #include "ffpipenode_ios_videotoolbox_vdec.h"
 #include "ffpipenode_ffplay_vdec.h"
 #include "ff_ffplay.h"
-#import "ijksdl/ios/ijksdl_aout_ios_audiounit.h"
+#import "ijksdl/ios/audio/ijksdl_aout_ios_audiounit.h"
 
 struct IJKFF_Pipeline_Opaque {
     FFPlayer    *ffp;

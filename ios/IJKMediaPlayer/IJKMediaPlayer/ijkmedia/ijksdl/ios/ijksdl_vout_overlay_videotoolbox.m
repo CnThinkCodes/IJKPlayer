@@ -38,8 +38,7 @@ struct SDL_VoutOverlay_Opaque {
 };
 
 
-static void func_free_l(SDL_VoutOverlay *overlay)
-{
+static void func_free_l(SDL_VoutOverlay *overlay){
     if (!overlay)
         return;
     SDL_VoutOverlay_Opaque *opaque = overlay->opaque;
@@ -52,20 +51,17 @@ static void func_free_l(SDL_VoutOverlay *overlay)
     SDL_VoutOverlay_FreeInternal(overlay);
 }
 
-static int func_lock(SDL_VoutOverlay *overlay)
-{
+static int func_lock(SDL_VoutOverlay *overlay){
     SDL_VoutOverlay_Opaque *opaque = overlay->opaque;
     return SDL_LockMutex(opaque->mutex);
 }
 
-static int func_unlock(SDL_VoutOverlay *overlay)
-{
+static int func_unlock(SDL_VoutOverlay *overlay){
     SDL_VoutOverlay_Opaque *opaque = overlay->opaque;
     return SDL_UnlockMutex(opaque->mutex);
 }
 
-static void func_unref(SDL_VoutOverlay *overlay)
-{
+static void func_unref(SDL_VoutOverlay *overlay){
     if (!overlay) {
         return;
     }
@@ -83,8 +79,7 @@ static void func_unref(SDL_VoutOverlay *overlay)
     return;
 }
 
-static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame)
-{
+static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame){
     assert(frame->format == IJK_AV_PIX_FMT__VIDEO_TOOLBOX);
 
     CVBufferRef pixel_buffer = CVBufferRetain(frame->opaque);
@@ -132,8 +127,7 @@ static SDL_Class g_vout_overlay_videotoolbox_class = {
     .name = "VideoToolboxVoutOverlay",
 };
 
-static bool check_object(SDL_VoutOverlay* object, const char *func_name)
-{
+static bool check_object(SDL_VoutOverlay* object, const char *func_name){
     if (!object || !object->opaque || !object->opaque_class) {
         ALOGE("%s: invalid pipeline\n", func_name);
         return false;
@@ -147,8 +141,7 @@ static bool check_object(SDL_VoutOverlay* object, const char *func_name)
     return true;
 }
 
-CVPixelBufferRef SDL_VoutOverlayVideoToolBox_GetCVPixelBufferRef(SDL_VoutOverlay *overlay)
-{
+CVPixelBufferRef SDL_VoutOverlayVideoToolBox_GetCVPixelBufferRef(SDL_VoutOverlay *overlay){
     if (!check_object(overlay, __func__))
         return NULL;
 
@@ -156,8 +149,7 @@ CVPixelBufferRef SDL_VoutOverlayVideoToolBox_GetCVPixelBufferRef(SDL_VoutOverlay
     return opaque->pixel_buffer;
 }
 
-SDL_VoutOverlay *SDL_VoutVideoToolBox_CreateOverlay(int width, int height, SDL_Vout *display)
-{
+SDL_VoutOverlay *SDL_VoutVideoToolBox_CreateOverlay(int width, int height, SDL_Vout *display){
     SDLTRACE("SDL_VoutVideoToolBox_CreateOverlay(w=%d, h=%d, fmt=_VTB, dp=%p)\n",
              width, height, display);
     SDL_VoutOverlay *overlay = SDL_VoutOverlay_CreateInternal(sizeof(SDL_VoutOverlay_Opaque));

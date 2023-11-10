@@ -54,7 +54,7 @@ fail:
     return NULL;
 }
 
-void ijkmp_ios_set_glview_l(IjkMediaPlayer *mp, IJKSDLGLView *glView)
+void ijkmp_ios_set_glview_l(IjkMediaPlayer *mp, UIView<IJKSDLGLViewProtocol> *glView)
 {
     assert(mp);
     assert(mp->ffplayer);
@@ -63,7 +63,7 @@ void ijkmp_ios_set_glview_l(IjkMediaPlayer *mp, IJKSDLGLView *glView)
     SDL_VoutIos_SetGLView(mp->ffplayer->vout, glView);
 }
 
-void ijkmp_ios_set_glview(IjkMediaPlayer *mp, IJKSDLGLView *glView)
+void ijkmp_ios_set_glview(IjkMediaPlayer *mp, UIView<IJKSDLGLViewProtocol> *glView)
 {
     assert(mp);
     MPTRACE("ijkmp_ios_set_view(glView=%p)\n", (void*)glView);
@@ -81,8 +81,7 @@ bool ijkmp_ios_is_videotoolbox_open_l(IjkMediaPlayer *mp)
     return false;
 }
 
-bool ijkmp_ios_is_videotoolbox_open(IjkMediaPlayer *mp)
-{
+bool ijkmp_ios_is_videotoolbox_open(IjkMediaPlayer *mp){
     assert(mp);
     MPTRACE("%s()\n", __func__);
     pthread_mutex_lock(&mp->mutex);

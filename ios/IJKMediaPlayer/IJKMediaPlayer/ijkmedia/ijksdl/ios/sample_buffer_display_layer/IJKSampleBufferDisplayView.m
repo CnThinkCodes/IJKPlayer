@@ -1,32 +1,17 @@
-/*
- * IJKSDLGLView.m
- *
- * Copyright (c) 2013 Bilibili
- * Copyright (c) 2013 Zhang Rui <bbcallen@gmail.com>
- *
- * based on https://github.com/kolyvan/kxmovie
- *
- * This file is part of ijkPlayer.
- *
- * ijkPlayer is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * ijkPlayer is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with ijkPlayer; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
+//
+//  IJKSampleBufferDisplayView.m
+//  IJKMediaPlayer
+//
+//  Created by hejianyuan on 2023/10/20.
+//  Copyright © 2023 bilibili. All rights reserved.
+//
 
-#import "IJKSDLGLView.h"
+#import "IJKSampleBufferDisplayView.h"
 #include "ijksdl/ijksdl_timer.h"
 #include "ijksdl/ios/ijksdl_ios.h"
 #include "ijksdl/ijksdl_gles2.h"
+#import <AVFoundation/AVFoundation.h>
+
 
 typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     IJKSDLGLViewApplicationUnknownState = 0,
@@ -34,12 +19,12 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     IJKSDLGLViewApplicationBackgroundState = 2
 };
 
-@interface IJKSDLGLView()
+@interface IJKSampleBufferDisplayView()
 @property(atomic,strong) NSRecursiveLock *glActiveLock;
 @property(atomic) BOOL glActivePaused;
 @end
 
-@implementation IJKSDLGLView {
+@implementation IJKSampleBufferDisplayView{
     EAGLContext     *_context;
     GLuint          _framebuffer;
     GLuint          _renderbuffer;
@@ -69,13 +54,12 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
 @synthesize scaleFactor                = _scaleFactor;
 @synthesize fps                        = _fps;
 
-+ (Class) layerClass
-{
-	return [CAEAGLLayer class];
+
++ (Class)layerClass{
+    return [AVSampleBufferDisplayLayer class];
 }
 
-- (id) initWithFrame:(CGRect)frame
-{
+- (id)initWithFrame:(CGRect)frame{
     self = [super initWithFrame:frame];
     if (self) {
         _tryLockErrorCount = 0;
@@ -92,8 +76,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     return self;
 }
 
-- (void)willMoveToWindow:(UIWindow *)newWindow
-{
+- (void)willMoveToWindow:(UIWindow *)newWindow{
     if (!_shouldLockWhileBeingMovedToWindow) {
         [super willMoveToWindow:newWindow];
         return;
@@ -105,17 +88,15 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     [super willMoveToWindow:newWindow];
 }
 
-- (void)didMoveToWindow
-{
+- (void)didMoveToWindow{
     [super didMoveToWindow];
-    if (self.window && _didLockedDueToMovedToWindow) {
+    if (self.window && _didLockedDueToMovedToWindow){
         [self unlockGLActive];
         _didLockedDueToMovedToWindow = NO;
     }
 }
 
-- (BOOL)setupEAGLContext:(EAGLContext *)context
-{
+- (BOOL)setupEAGLContext:(EAGLContext *)context{
     glGenFramebuffers(1, &_framebuffer);
     glGenRenderbuffers(1, &_renderbuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, _framebuffer);
@@ -140,13 +121,11 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     return YES;
 }
 
-- (CAEAGLLayer *)eaglLayer
-{
-    return (CAEAGLLayer*) self.layer;
+- (AVSampleBufferDisplayLayer *)displayLayer{
+    return (AVSampleBufferDisplayLayer*)self.layer;
 }
 
-- (BOOL)setupGL
-{
+- (BOOL)setupGL{
     if (_didSetupGL)
         return YES;
 
@@ -182,8 +161,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     return _didSetupGL;
 }
 
-- (BOOL)setupGLOnce
-{
+- (BOOL)setupGLOnce{
     if (_didSetupGL)
         return YES;
 
@@ -195,8 +173,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     return didSetupGL;
 }
 
-- (BOOL)isApplicationActive
-{
+- (BOOL)isApplicationActive{
     switch (_applicationState) {
         case IJKSDLGLViewApplicationForegroundState:
             return YES;
@@ -216,8 +193,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     }
 }
 
-- (void)dealloc
-{
+- (void)dealloc{
     [self lockGLActive];
 
     _didStopGL = YES;
@@ -249,14 +225,12 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     [self unlockGLActive];
 }
 
-- (void)setScaleFactor:(CGFloat)scaleFactor
-{
+- (void)setScaleFactor:(CGFloat)scaleFactor{
     _scaleFactor = scaleFactor;
     [self invalidateRenderBuffer];
 }
 
-- (void)layoutSubviews
-{
+- (void)layoutSubviews{
     [super layoutSubviews];
     if (self.window.screen != nil) {
         _scaleFactor = self.window.screen.scale;
@@ -264,8 +238,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     [self invalidateRenderBuffer];
 }
 
-- (void)setContentMode:(UIViewContentMode)contentMode
-{
+- (void)setContentMode:(UIViewContentMode)contentMode{
     [super setContentMode:contentMode];
 
     switch (contentMode) {
@@ -285,8 +258,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     [self invalidateRenderBuffer];
 }
 
-- (BOOL)setupRenderer: (SDL_VoutOverlay *) overlay
-{
+- (BOOL)setupRenderer: (SDL_VoutOverlay *) overlay{
     if (overlay == nil)
         return _renderer != nil;
 
@@ -309,8 +281,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     return YES;
 }
 
-- (void)invalidateRenderBuffer
-{
+- (void)invalidateRenderBuffer{
     NSLog(@"invalidateRenderBuffer\n");
     [self lockGLActive];
 
@@ -328,12 +299,11 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     [self unlockGLActive];
 }
 
-- (void) display_pixels: (IJKOverlay *) overlay {
+- (void) display_pixels: (IJKOverlay *)overlay {
     return;
 }
 
-- (void)display: (SDL_VoutOverlay *) overlay
-{
+- (void)display:(SDL_VoutOverlay *)overlay{
     if (_didSetupGL == NO)
         return;
 
@@ -360,8 +330,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
 }
 
 // NOTE: overlay could be NULl
-- (void)displayInternal: (SDL_VoutOverlay *) overlay
-{
+- (void)displayInternal:(SDL_VoutOverlay *)overlay{
     if (![self setupRenderer:overlay]) {
         if (!overlay && !_renderer) {
             NSLog(@"IJKSDLGLView: setupDisplay not ready\n");
@@ -371,7 +340,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
         return;
     }
 
-    [[self eaglLayer] setContentsScale:_scaleFactor];
+//    [[self eaglLayer] setContentsScale:_scaleFactor];
 
     if (_isRenderBufferInvalidated) {
         NSLog(@"IJKSDLGLView: renderbufferStorage fromDrawable\n");
@@ -407,19 +376,15 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
 }
 
 #pragma mark AppDelegate
-
-- (void) lockGLActive
-{
+- (void)lockGLActive{
     [self.glActiveLock lock];
 }
 
-- (void) unlockGLActive
-{
+- (void)unlockGLActive{
     [self.glActiveLock unlock];
 }
 
-- (BOOL) tryLockGLActive
-{
+- (BOOL)tryLockGLActive{
     if (![self.glActiveLock tryLock])
         return NO;
 
@@ -439,8 +404,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     return YES;
 }
 
-- (void)toggleGLPaused:(BOOL)paused
-{
+- (void)toggleGLPaused:(BOOL)paused{
     [self lockGLActive];
     if (!self.glActivePaused && paused) {
         if (_context != nil) {
@@ -454,9 +418,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     [self unlockGLActive];
 }
 
-- (void)registerApplicationObservers
-{
-
+- (void)registerApplicationObservers{
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(applicationWillEnterForeground)
                                                  name:UIApplicationWillEnterForegroundNotification
@@ -488,8 +450,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     [_registeredNotifications addObject:UIApplicationWillTerminateNotification];
 }
 
-- (void)unregisterApplicationObservers
-{
+- (void)unregisterApplicationObservers{
     for (NSString *name in _registeredNotifications) {
         [[NSNotificationCenter defaultCenter] removeObserver:self
                                                         name:name
@@ -497,46 +458,40 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     }
 }
 
-- (void)applicationWillEnterForeground
-{
+- (void)applicationWillEnterForeground{
     NSLog(@"IJKSDLGLView:applicationWillEnterForeground: %d", (int)[UIApplication sharedApplication].applicationState);
     [self setupGLOnce];
     _applicationState = IJKSDLGLViewApplicationForegroundState;
     [self toggleGLPaused:NO];
 }
 
-- (void)applicationDidBecomeActive
-{
+- (void)applicationDidBecomeActive{
     NSLog(@"IJKSDLGLView:applicationDidBecomeActive: %d", (int)[UIApplication sharedApplication].applicationState);
     [self setupGLOnce];
     [self toggleGLPaused:NO];
 }
 
-- (void)applicationWillResignActive
-{
+- (void)applicationWillResignActive{
     NSLog(@"IJKSDLGLView:applicationWillResignActive: %d", (int)[UIApplication sharedApplication].applicationState);
     [self toggleGLPaused:YES];
     glFinish();
 }
 
-- (void)applicationDidEnterBackground
-{
+- (void)applicationDidEnterBackground{
     NSLog(@"IJKSDLGLView:applicationDidEnterBackground: %d", (int)[UIApplication sharedApplication].applicationState);
     _applicationState = IJKSDLGLViewApplicationBackgroundState;
     [self toggleGLPaused:YES];
     glFinish();
 }
 
-- (void)applicationWillTerminate
-{
+- (void)applicationWillTerminate{
     NSLog(@"IJKSDLGLView:applicationWillTerminate: %d", (int)[UIApplication sharedApplication].applicationState);
     [self toggleGLPaused:YES];
 }
 
 #pragma mark snapshot
 
-- (UIImage*)snapshot
-{
+- (UIImage*)snapshot{
     [self lockGLActive];
 
     UIImage *image = [self snapshotInternal];
@@ -546,8 +501,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     return image;
 }
 
-- (UIImage*)snapshotInternal
-{
+- (UIImage*)snapshotInternal{
     if (isIOS7OrLater()) {
         return [self snapshotInternalOnIOS7AndLater];
     } else {
@@ -555,8 +509,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     }
 }
 
-- (UIImage*)snapshotInternalOnIOS7AndLater
-{
+- (UIImage*)snapshotInternalOnIOS7AndLater{
     if (CGSizeEqualToSize(self.bounds.size, CGSizeZero)) {
         return nil;
     }
@@ -572,8 +525,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     return complexViewImage;
 }
 
-- (UIImage*)snapshotInternalOnIOS6AndBefore
-{
+- (UIImage*)snapshotInternalOnIOS6AndBefore{
     EAGLContext *prevContext = [EAGLContext currentContext];
     [EAGLContext setCurrentContext:_context];
 
@@ -631,8 +583,9 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     return image;
 }
 
-- (void)setShouldLockWhileBeingMovedToWindow:(BOOL)shouldLockWhileBeingMovedToWindow
-{
+- (void)setShouldLockWhileBeingMovedToWindow:(BOOL)shouldLockWhileBeingMovedToWindow{
     _shouldLockWhileBeingMovedToWindow = shouldLockWhileBeingMovedToWindow;
 }
+
+
 @end

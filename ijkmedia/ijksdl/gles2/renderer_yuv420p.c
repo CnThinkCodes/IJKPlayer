@@ -21,8 +21,7 @@
 
 #include "internal.h"
 
-static GLboolean yuv420p_use(IJK_GLES2_Renderer *renderer)
-{
+static GLboolean yuv420p_use(IJK_GLES2_Renderer *renderer){
     ALOGI("use render yuv420p\n");
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
@@ -48,16 +47,14 @@ static GLboolean yuv420p_use(IJK_GLES2_Renderer *renderer)
     return GL_TRUE;
 }
 
-static GLsizei yuv420p_getBufferWidth(IJK_GLES2_Renderer *renderer, SDL_VoutOverlay *overlay)
-{
+static GLsizei yuv420p_getBufferWidth(IJK_GLES2_Renderer *renderer, SDL_VoutOverlay *overlay){
     if (!overlay)
         return 0;
 
     return overlay->pitches[0] / 1;
 }
 
-static GLboolean yuv420p_uploadTexture(IJK_GLES2_Renderer *renderer, SDL_VoutOverlay *overlay)
-{
+static GLboolean yuv420p_uploadTexture(IJK_GLES2_Renderer *renderer, SDL_VoutOverlay *overlay){
     if (!renderer || !overlay)
         return GL_FALSE;
 
@@ -97,8 +94,7 @@ static GLboolean yuv420p_uploadTexture(IJK_GLES2_Renderer *renderer, SDL_VoutOve
     return GL_TRUE;
 }
 
-IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_yuv420p()
-{
+IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_yuv420p(){
     ALOGI("create render yuv420p\n");
     IJK_GLES2_Renderer *renderer = IJK_GLES2_Renderer_create_base(IJK_GLES2_getFragmentShader_yuv420p());
     if (!renderer)

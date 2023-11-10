@@ -1,8 +1,10 @@
 /*
- * ijksdl_vout_ios_gles2.h
+ * IJKSDLGLView.h
  *
  * Copyright (c) 2013 Bilibili
  * Copyright (c) 2013 Zhang Rui <bbcallen@gmail.com>
+ *
+ * based on https://github.com/kolyvan/kxmovie
  *
  * This file is part of ijkPlayer.
  *
@@ -21,10 +23,19 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "ijksdl/ijksdl_stdinc.h"
+#import <UIKit/UIKit.h>
+#import "IJKSDLGLViewProtocol.h"
+
 #include "ijksdl/ijksdl_vout.h"
 
-@class IJKSDLGLView;
+@interface IJKSDLGLView : UIView <IJKSDLGLViewProtocol>
 
-SDL_Vout *SDL_VoutIos_CreateForGLES2();
-void SDL_VoutIos_SetGLView(SDL_Vout *vout, IJKSDLGLView *view);
+- (id)initWithFrame:(CGRect)frame;
+
+- (void)display:(SDL_VoutOverlay *)overlay;
+
+- (UIImage*)snapshot;
+
+- (void)setShouldLockWhileBeingMovedToWindow:(BOOL)shouldLockWhiteBeingMovedToWindow __attribute__((deprecated("unused")));
+
+@end

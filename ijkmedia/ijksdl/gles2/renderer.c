@@ -21,8 +21,7 @@
 
 #include "internal.h"
 
-static void IJK_GLES2_printProgramInfo(GLuint program)
-{
+static void IJK_GLES2_printProgramInfo(GLuint program){
     if (!program)
         return;
 
@@ -52,8 +51,7 @@ static void IJK_GLES2_printProgramInfo(GLuint program)
         free(buf_heap);
 }
 
-void IJK_GLES2_Renderer_reset(IJK_GLES2_Renderer *renderer)
-{
+void IJK_GLES2_Renderer_reset(IJK_GLES2_Renderer *renderer){
     if (!renderer)
         return;
 
@@ -76,8 +74,7 @@ void IJK_GLES2_Renderer_reset(IJK_GLES2_Renderer *renderer)
     }
 }
 
-void IJK_GLES2_Renderer_free(IJK_GLES2_Renderer *renderer)
-{
+void IJK_GLES2_Renderer_free(IJK_GLES2_Renderer *renderer){
     if (!renderer)
         return;
 
@@ -98,8 +95,7 @@ void IJK_GLES2_Renderer_free(IJK_GLES2_Renderer *renderer)
     free(renderer);
 }
 
-void IJK_GLES2_Renderer_freeP(IJK_GLES2_Renderer **renderer)
-{
+void IJK_GLES2_Renderer_freeP(IJK_GLES2_Renderer **renderer){
     if (!renderer || !*renderer)
         return;
 
@@ -107,8 +103,7 @@ void IJK_GLES2_Renderer_freeP(IJK_GLES2_Renderer **renderer)
     *renderer = NULL;
 }
 
-IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_base(const char *fragment_shader_source)
-{
+IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_base(const char *fragment_shader_source){
     assert(fragment_shader_source);
 
     IJK_GLES2_Renderer *renderer = (IJK_GLES2_Renderer *)calloc(1, sizeof(IJK_GLES2_Renderer));
@@ -152,8 +147,7 @@ fail:
 }
 
 
-IJK_GLES2_Renderer *IJK_GLES2_Renderer_create(SDL_VoutOverlay *overlay)
-{
+IJK_GLES2_Renderer *IJK_GLES2_Renderer_create(SDL_VoutOverlay *overlay){
     if (!overlay)
         return NULL;
 
@@ -174,6 +168,7 @@ IJK_GLES2_Renderer *IJK_GLES2_Renderer_create(SDL_VoutOverlay *overlay)
         case SDL_FCC_YV12:      renderer = IJK_GLES2_Renderer_create_yuv420p(); break;
         case SDL_FCC_I420:      renderer = IJK_GLES2_Renderer_create_yuv420p(); break;
         case SDL_FCC_I444P10LE: renderer = IJK_GLES2_Renderer_create_yuv444p10le(); break;
+        case SDL_FCC_I420P10LE: renderer = IJK_GLES2_Renderer_create_yuv420p10le(); break;
         default:
             ALOGE("[GLES2] unknown format %4s(%d)\n", (char *)&overlay->format, overlay->format);
             return NULL;
@@ -183,13 +178,11 @@ IJK_GLES2_Renderer *IJK_GLES2_Renderer_create(SDL_VoutOverlay *overlay)
     return renderer;
 }
 
-GLboolean IJK_GLES2_Renderer_isValid(IJK_GLES2_Renderer *renderer)
-{
+GLboolean IJK_GLES2_Renderer_isValid(IJK_GLES2_Renderer *renderer){
     return renderer && renderer->program ? GL_TRUE : GL_FALSE;
 }
 
-GLboolean IJK_GLES2_Renderer_isFormat(IJK_GLES2_Renderer *renderer, int format)
-{
+GLboolean IJK_GLES2_Renderer_isFormat(IJK_GLES2_Renderer *renderer, int format){
     if (!IJK_GLES2_Renderer_isValid(renderer))
         return GL_FALSE;
 
@@ -199,8 +192,7 @@ GLboolean IJK_GLES2_Renderer_isFormat(IJK_GLES2_Renderer *renderer, int format)
 /*
  * Per-Context routine
  */
-GLboolean IJK_GLES2_Renderer_setupGLES()
-{
+GLboolean IJK_GLES2_Renderer_setupGLES(){
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);       IJK_GLES2_checkError_TRACE("glClearColor");
     glEnable(GL_CULL_FACE);                     IJK_GLES2_checkError_TRACE("glEnable(GL_CULL_FACE)");
     glCullFace(GL_BACK);                        IJK_GLES2_checkError_TRACE("glCullFace");
@@ -209,8 +201,7 @@ GLboolean IJK_GLES2_Renderer_setupGLES()
     return GL_TRUE;
 }
 
-static void IJK_GLES2_Renderer_Vertices_reset(IJK_GLES2_Renderer *renderer)
-{
+static void IJK_GLES2_Renderer_Vertices_reset(IJK_GLES2_Renderer *renderer){
     renderer->vertices[0] = -1.0f;
     renderer->vertices[1] = -1.0f;
     renderer->vertices[2] =  1.0f;
@@ -221,8 +212,7 @@ static void IJK_GLES2_Renderer_Vertices_reset(IJK_GLES2_Renderer *renderer)
     renderer->vertices[7] =  1.0f;
 }
 
-static void IJK_GLES2_Renderer_Vertices_apply(IJK_GLES2_Renderer *renderer)
-{
+static void IJK_GLES2_Renderer_Vertices_apply(IJK_GLES2_Renderer *renderer){
     switch (renderer->gravity) {
         case IJK_GLES2_GRAVITY_RESIZE_ASPECT:
             break;
@@ -240,8 +230,7 @@ static void IJK_GLES2_Renderer_Vertices_apply(IJK_GLES2_Renderer *renderer)
     if (renderer->layer_width <= 0 ||
         renderer->layer_height <= 0 ||
         renderer->frame_width <= 0 ||
-        renderer->frame_height <= 0)
-    {
+        renderer->frame_height <= 0){
         ALOGE("[GLES2] invalid width/height for gravity aspect\n");
         IJK_GLES2_Renderer_Vertices_reset(renderer);
         return;
@@ -278,8 +267,7 @@ static void IJK_GLES2_Renderer_Vertices_apply(IJK_GLES2_Renderer *renderer)
     renderer->vertices[7] =   nH;
 }
 
-static void IJK_GLES2_Renderer_Vertices_reloadVertex(IJK_GLES2_Renderer *renderer)
-{
+static void IJK_GLES2_Renderer_Vertices_reloadVertex(IJK_GLES2_Renderer *renderer){
     glVertexAttribPointer(renderer->av4_position, 2, GL_FLOAT, GL_FALSE, 0, renderer->vertices);    IJK_GLES2_checkError_TRACE("glVertexAttribPointer(av2_texcoord)");
     glEnableVertexAttribArray(renderer->av4_position);                                      IJK_GLES2_checkError_TRACE("glEnableVertexAttribArray(av2_texcoord)");
 }
@@ -290,8 +278,7 @@ static void IJK_GLES2_Renderer_Vertices_reloadVertex(IJK_GLES2_Renderer *rendere
 #define IJK_GLES2_GRAVITY_RESIZE_ASPECT_FILL    (2) // Preserve aspect ratio; fill layer bounds.
 #define IJK_GLES2_GRAVITY_MAX                   (2)
 
-GLboolean IJK_GLES2_Renderer_setGravity(IJK_GLES2_Renderer *renderer, int gravity, GLsizei layer_width, GLsizei layer_height)
-{
+GLboolean IJK_GLES2_Renderer_setGravity(IJK_GLES2_Renderer *renderer, int gravity, GLsizei layer_width, GLsizei layer_height){
     if (renderer->gravity != gravity && gravity >= IJK_GLES2_GRAVITY_MIN && gravity <= IJK_GLES2_GRAVITY_MAX)
         renderer->vertices_changed = 1;
     else if (renderer->layer_width != layer_width)
@@ -307,8 +294,7 @@ GLboolean IJK_GLES2_Renderer_setGravity(IJK_GLES2_Renderer *renderer, int gravit
     return GL_TRUE;
 }
 
-static void IJK_GLES2_Renderer_TexCoords_reset(IJK_GLES2_Renderer *renderer)
-{
+static void IJK_GLES2_Renderer_TexCoords_reset(IJK_GLES2_Renderer *renderer){
     renderer->texcoords[0] = 0.0f;
     renderer->texcoords[1] = 1.0f;
     renderer->texcoords[2] = 1.0f;
@@ -319,8 +305,7 @@ static void IJK_GLES2_Renderer_TexCoords_reset(IJK_GLES2_Renderer *renderer)
     renderer->texcoords[7] = 0.0f;
 }
 
-static void IJK_GLES2_Renderer_TexCoords_cropRight(IJK_GLES2_Renderer *renderer, GLfloat cropRight)
-{
+static void IJK_GLES2_Renderer_TexCoords_cropRight(IJK_GLES2_Renderer *renderer, GLfloat cropRight){
     ALOGE("IJK_GLES2_Renderer_TexCoords_cropRight\n");
     renderer->texcoords[0] = 0.0f;
     renderer->texcoords[1] = 1.0f;
@@ -332,8 +317,7 @@ static void IJK_GLES2_Renderer_TexCoords_cropRight(IJK_GLES2_Renderer *renderer,
     renderer->texcoords[7] = 0.0f;
 }
 
-static void IJK_GLES2_Renderer_TexCoords_reloadVertex(IJK_GLES2_Renderer *renderer)
-{
+static void IJK_GLES2_Renderer_TexCoords_reloadVertex(IJK_GLES2_Renderer *renderer){
     glVertexAttribPointer(renderer->av2_texcoord, 2, GL_FLOAT, GL_FALSE, 0, renderer->texcoords);   IJK_GLES2_checkError_TRACE("glVertexAttribPointer(av2_texcoord)");
     glEnableVertexAttribArray(renderer->av2_texcoord);                                              IJK_GLES2_checkError_TRACE("glEnableVertexAttribArray(av2_texcoord)");
 }
@@ -341,8 +325,7 @@ static void IJK_GLES2_Renderer_TexCoords_reloadVertex(IJK_GLES2_Renderer *render
 /*
  * Per-Renderer routine
  */
-GLboolean IJK_GLES2_Renderer_use(IJK_GLES2_Renderer *renderer)
-{
+GLboolean IJK_GLES2_Renderer_use(IJK_GLES2_Renderer *renderer){
     if (!renderer)
         return GL_FALSE;
 
@@ -366,12 +349,11 @@ GLboolean IJK_GLES2_Renderer_use(IJK_GLES2_Renderer *renderer)
 /*
  * Per-Frame routine
  */
-GLboolean IJK_GLES2_Renderer_renderOverlay(IJK_GLES2_Renderer *renderer, SDL_VoutOverlay *overlay)
-{
+GLboolean IJK_GLES2_Renderer_renderOverlay(IJK_GLES2_Renderer *renderer, SDL_VoutOverlay *overlay){
     if (!renderer || !renderer->func_uploadTexture)
         return GL_FALSE;
 
-    glClear(GL_COLOR_BUFFER_BIT);               IJK_GLES2_checkError_TRACE("glClear");
+    glClear(GL_COLOR_BUFFER_BIT); IJK_GLES2_checkError_TRACE("glClear");
 
     GLsizei visible_width  = renderer->frame_width;
     GLsizei visible_height = renderer->frame_height;
@@ -423,7 +405,7 @@ GLboolean IJK_GLES2_Renderer_renderOverlay(IJK_GLES2_Renderer *renderer, SDL_Vou
         IJK_GLES2_Renderer_TexCoords_reloadVertex(renderer);
     }
 
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);      IJK_GLES2_checkError_TRACE("glDrawArrays");
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4); IJK_GLES2_checkError_TRACE("glDrawArrays");
 
     return GL_TRUE;
 }

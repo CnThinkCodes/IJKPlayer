@@ -32,8 +32,7 @@ void IJK_GLES2_printString(const char *name, GLenum s) {
     ALOGI("[GLES2] %s = %s\n", name, v);
 }
 
-void IJK_GLES2_loadOrtho(IJK_GLES_Matrix *matrix, GLfloat left, GLfloat right, GLfloat bottom, GLfloat top, GLfloat near, GLfloat far)
-{
+void IJK_GLES2_loadOrtho(IJK_GLES_Matrix *matrix, GLfloat left, GLfloat right, GLfloat bottom, GLfloat top, GLfloat near, GLfloat far){
     GLfloat r_l = right - left;
     GLfloat t_b = top - bottom;
     GLfloat f_n = far - near;
