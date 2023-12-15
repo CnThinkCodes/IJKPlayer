@@ -27,10 +27,11 @@ typedef NS_ENUM(NSUInteger, IJKSDLMetalRenderingResizingMode) {
 
 @property (nonatomic, assign) Uint32 inputFormat;
 
+@property (nonatomic, assign) BOOL EDR;
+
 - (instancetype)initWithMetalKitView:(IJKSDLMetalView *)mtkView;
 
 - (BOOL)display:(SDL_VoutOverlay *)overlay;
-
 
 @end
 

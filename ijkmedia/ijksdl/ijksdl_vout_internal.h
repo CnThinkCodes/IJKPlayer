@@ -29,8 +29,7 @@
 #include <string.h>
 #include "ijksdl_vout.h"
 
-inline static SDL_Vout *SDL_Vout_CreateInternal(size_t opaque_size)
-{
+inline static SDL_Vout *SDL_Vout_CreateInternal(size_t opaque_size){
     SDL_Vout *vout = (SDL_Vout*) calloc(1, sizeof(SDL_Vout));
     if (!vout)
         return NULL;
@@ -51,8 +50,7 @@ inline static SDL_Vout *SDL_Vout_CreateInternal(size_t opaque_size)
     return vout;
 }
 
-inline static void SDL_Vout_FreeInternal(SDL_Vout *vout)
-{
+inline static void SDL_Vout_FreeInternal(SDL_Vout *vout){
     if (!vout)
         return;
 
@@ -65,8 +63,7 @@ inline static void SDL_Vout_FreeInternal(SDL_Vout *vout)
     free(vout);
 }
 
-inline static SDL_VoutOverlay *SDL_VoutOverlay_CreateInternal(size_t opaque_size)
-{
+inline static SDL_VoutOverlay *SDL_VoutOverlay_CreateInternal(size_t opaque_size){
     SDL_VoutOverlay *overlay = (SDL_VoutOverlay*) calloc(1, sizeof(SDL_VoutOverlay));
     if (!overlay)
         return NULL;
@@ -79,8 +76,7 @@ inline static SDL_VoutOverlay *SDL_VoutOverlay_CreateInternal(size_t opaque_size
     return overlay;
 }
 
-inline static void SDL_VoutOverlay_FreeInternal(SDL_VoutOverlay *overlay)
-{
+inline static void SDL_VoutOverlay_FreeInternal(SDL_VoutOverlay *overlay){
     if (!overlay)
         return;
 

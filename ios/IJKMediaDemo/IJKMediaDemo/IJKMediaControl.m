@@ -28,12 +28,16 @@
     self = [super initWithFrame:frame];
     if (self) {
         // Initialization code
+        self.topPanel.frame = CGRectMake(0, 0, UIScreen.mainScreen.bounds.size.width, 60);
+
     }
     return self;
 }
 
-- (void)awakeFromNib
-{
+- (void)awakeFromNib{
+    [super awakeFromNib];
+    self.topPanel.frame = CGRectMake(0, 0, UIScreen.mainScreen.bounds.size.width, 60);
+
     [self refreshMediaControl];
 }
 
@@ -78,6 +82,7 @@
 
 - (void)refreshMediaControl
 {
+    self.topPanel.frame = CGRectMake(0, 0, UIScreen.mainScreen.bounds.size.width, 60);
     // duration
     NSTimeInterval duration = self.delegatePlayer.duration;
     NSInteger intDuration = duration + 0.5;

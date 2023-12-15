@@ -208,8 +208,6 @@ static int _attach_vivid_metadata(SDL_VoutOverlay *overlay, const AVFrame *frame
         overlay->metaData = NULL;
     }
     
-    
-    
     for (int i = 0; i < frame->nb_side_data; i++) {
         AVFrameSideData *sideData = frame->side_data[i];
         if(sideData->type == AV_FRAME_DATA_DYNAMIC_HDR_VIVID){
@@ -226,7 +224,7 @@ static int _attach_vivid_metadata(SDL_VoutOverlay *overlay, const AVFrame *frame
             
             float *GTMcurve2 = (float *)mallocz(sizeof(float) * (CURVELEN + 1));
             if(GTMcurve2 == NULL) goto faild;
-            InitParams(100, pMetaData, MasterDisplayPQ, curve, GTMcurve2);
+            InitParams(100, pMetaData, MasterDisplayPQ, curve, GTMcurve2, IJKMetalPostprocessSDR);
             overlay->vividCure = curve;
             overlay->GTMcurve2 = GTMcurve2;
             

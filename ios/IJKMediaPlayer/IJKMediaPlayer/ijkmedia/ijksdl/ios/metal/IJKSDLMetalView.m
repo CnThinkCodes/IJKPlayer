@@ -13,9 +13,10 @@
 #include "IJKSDLMetalRender.h"
 
 typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
-    IJKSDLGLViewApplicationUnknownState = 0,
-    IJKSDLGLViewApplicationForegroundState = 1,
-    IJKSDLGLViewApplicationBackgroundState = 2
+    IJKSDLGLViewApplicationUnknownState = -1,
+    IJKSDLGLViewApplicationForegroundState = 0,
+    IJKSDLGLViewApplicationInactiveState = 1,
+    IJKSDLGLViewApplicationBackgroundState = 2,
 };
 
 
@@ -123,18 +124,15 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
     switch (_applicationState) {
         case IJKSDLGLViewApplicationForegroundState:
             return YES;
+        case IJKSDLGLViewApplicationInactiveState:
         case IJKSDLGLViewApplicationBackgroundState:
             return NO;
         default: {
-            UIApplicationState appState = [UIApplication sharedApplication].applicationState;
-            switch (appState) {
-                case UIApplicationStateActive:
-                    return YES;
-                case UIApplicationStateInactive:
-                case UIApplicationStateBackground:
-                default:
-                    return NO;
-            }
+            dispatch_sync(dispatch_get_main_queue(), ^{
+                _applicationState = (IJKSDLGLViewApplicationState)[UIApplication sharedApplication].applicationState;
+            });
+            
+            return _applicationState == IJKSDLGLViewApplicationForegroundState;
         }
     }
 }
@@ -394,7 +392,7 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
 }
 
 - (UIImage*)snapshotInternal{
-    if (isIOS7OrLater()) {
+    if (isIOS9OrLater()) {
         return [self snapshotInternalOnIOS7AndLater];
     }
     

@@ -53,5 +53,8 @@ int         SDL_CondBroadcast(SDL_cond *cond);
 int         SDL_CondWaitTimeout(SDL_cond *cond, SDL_mutex *mutex, uint32_t ms);
 int         SDL_CondWait(SDL_cond *cond, SDL_mutex *mutex);
 
+
+
+
 #endif
 

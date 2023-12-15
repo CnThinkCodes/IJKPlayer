@@ -516,11 +516,10 @@ typedef NS_ENUM(NSInteger, IJKSDLGLViewApplicationState) {
 }
 
 - (UIImage*)snapshotInternal{
-    if (isIOS7OrLater()) {
+    if (isIOS9OrLater()) {
         return [self snapshotInternalOnIOS7AndLater];
-    } else {
-        return [self snapshotInternalOnIOS6AndBefore];
     }
+    return nil;
 }
 
 - (UIImage*)snapshotInternalOnIOS7AndLater{

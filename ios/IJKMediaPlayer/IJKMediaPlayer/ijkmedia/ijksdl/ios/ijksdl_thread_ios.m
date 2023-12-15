@@ -24,8 +24,7 @@
 #import "ijksdl_thread_ios.h"
 #include "ijksdl/ijksdl_thread.h"
 
-static void *SDL_RunThread(void *data)
-{
+static void *SDL_RunThread(void *data){
     @autoreleasepool {
         SDL_Thread *thread = data;
         pthread_setname_np(thread->name);
@@ -34,8 +33,7 @@ static void *SDL_RunThread(void *data)
     }
 }
 
-SDL_Thread *SDL_CreateThreadEx(SDL_Thread *thread, int (*fn)(void *), void *data, const char *name)
-{
+SDL_Thread *SDL_CreateThreadEx(SDL_Thread *thread, int (*fn)(void *), void *data, const char *name){
     thread->func = fn;
     thread->data = data;
     strlcpy(thread->name, name, sizeof(thread->name) - 1);

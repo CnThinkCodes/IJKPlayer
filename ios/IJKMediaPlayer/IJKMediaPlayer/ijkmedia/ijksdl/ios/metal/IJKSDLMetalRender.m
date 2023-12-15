@@ -55,6 +55,11 @@
 // sizeof(IJKHDRVividCurve);
 @property (nonatomic, strong) id <MTLBuffer> vividCurveBuffer;
 
+// sizeof(IJKHDRVividCurve);
+@property (nonatomic, strong) id <MTLBuffer> renderConfigBuffer;
+
+@property (nonatomic, strong) NSLock *dsipalyLock;
+
 
 @end
 
@@ -75,7 +80,7 @@
 - (instancetype)initWithMetalKitView:(IJKSDLMetalView *)mtkView{
     if(self = [super init]){
         self.mtkView = mtkView;
-
+        self.dsipalyLock = [[NSLock alloc] init];
     }
     return self;
 }
@@ -99,7 +104,6 @@
     @synchronized (self) {
         dispatch_async(dispatch_get_main_queue(), ^{
             do {
-               
                 if(![self setupMTKView]) break;
                 if(![self setupCommandQueue]) break;
                 if(![self setupTextureCache]) break;
@@ -126,17 +130,29 @@
         self.mtkView.drawableSize.height
     };
     
+    self.EDR = YES;
+    
     if (@available(iOS 16.0, *)) {
-        self.mtkLayer.wantsExtendedDynamicRangeContent = YES;
-        self.mtkLayer.pixelFormat = MTLPixelFormatRGBA16Float;
-        self.mtkLayer.colorspace = CGColorSpaceCreateWithName(kCGColorSpaceLinearDisplayP3);
-        
-        _curHeadroom = UIScreen.mainScreen.currentEDRHeadroom;
-        _maxHeadroom = UIScreen.mainScreen.potentialEDRHeadroom;
-        
-    }else{
+        if(self.EDR){
+            self.mtkLayer.wantsExtendedDynamicRangeContent = YES;
+            self.mtkLayer.pixelFormat = MTLPixelFormatRGBA16Float;
+            // self.mtkLayer.colorspace = CGColorSpaceCreateWithName(kCGColorSpaceExtendedLinearSRGB);
+            self.mtkLayer.colorspace = CGColorSpaceCreateWithName(kCGColorSpaceLinearITUR_2020);
+            
+            _curHeadroom = UIScreen.mainScreen.currentEDRHeadroom;
+            _maxHeadroom = UIScreen.mainScreen.potentialEDRHeadroom;
+            
+//            self.mtkLayer.EDRMetadata = [CAEDRMetadata HDR10MetadataWithMinLuminance:0.0 maxLuminance:650 opticalOutputScale:10000];
+        }else{
+            self.EDR = NO;
+        }
+    }
+    
+    if(!self.EDR){
         _curHeadroom = 1;
         _maxHeadroom = 1;
+        self.mtkLayer.colorspace = CGColorSpaceCreateWithName(kCGColorSpaceITUR_709);
+        self.mtkLayer.pixelFormat = MTLPixelFormatRGBA16Float;
     }
     
     return YES;
@@ -163,8 +179,6 @@
         return NO;
     }
     
-    
-
     id<MTLFunction> kernelFunction = [library newFunctionWithName:@"initCUVAParams"];
     // 创建计算管道状态
     _computePipelineState = [self.device newComputePipelineStateWithFunction:kernelFunction
@@ -196,9 +210,6 @@
     // IJKHDRVividCurve
     _vividCurveBuffer = [self.device newBufferWithLength:sizeof(IJKHDRVividCurve) options:MTLResourceStorageModeShared];
     
-    
-    
-
     return YES;
 }
 
@@ -259,28 +270,71 @@
 }
 
 #pragma mark - public
-- (BOOL)display:(SDL_VoutOverlay *)overlay{
+- (void)requestRenderEnvironment{
+    
+}
 
+- (BOOL)display:(SDL_VoutOverlay *)overlay{
     if(!_valid) return NO;
     
+    [self.dsipalyLock lock];
+    
     id <MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
+    // 渲染
+    MTLRenderPassDescriptor *passDescriptor = _mtkView.currentRenderPassDescriptor;
+    if (!passDescriptor) {
+        [commandBuffer commit];
+        [self.dsipalyLock unlock];
+        return NO;
+    }
+
+    IJKHDRVividRenderConfig renderConfig;
+    memset(&renderConfig, 0, sizeof(IJKHDRVividRenderConfig));
+
+    IJKHDRVividMetadata *metaData = overlay->metaData;
+
+    if(metaData){
+        renderConfig.metadataFlag = YES;
+        if(overlay->vividCure){
+            renderConfig.cureFlag = YES;
+        } else {
+            renderConfig.calcCureInGPU = YES;
+        }
+    }
+        
+    renderConfig.processMode = _EDR ?IJKMetalPostprocessHDR :IJKMetalPostprocessSDR;
+    renderConfig.maxHeadRoom = _maxHeadroom;
+    renderConfig.currentHeadRoom = _curHeadroom;
     
+    if(renderConfig.metadataFlag){
+        if(_EDR){
+            renderConfig.GPUProcessFun = IJKMetalGPUProcessPQHDR;
+        }else{
+            renderConfig.GPUProcessFun = IJKMetalGPUProcessPQSDR;
+        }
+    }else{
+        renderConfig.GPUProcessFun = IJKMetalGPUProcessHLGSDR;
+    }
     
-    if(0){
+    // 配置Buffer
+    _renderConfigBuffer = [_device newBufferWithBytes:&renderConfig length:sizeof(IJKHDRVividRenderConfig) options:MTLResourceStorageModeShared];
+    
+    if(renderConfig.calcCureInGPU){
         // 计算
         //创建一个命令编码器
         id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
         //创建一个命令编码器
         [computeEncoder setComputePipelineState:_computePipelineState];
         //设置输入buffer
-        
-        ((IJKHDRVividMetadata *)overlay->metaData)->_max_display_luminance = 500;
-        ((IJKHDRVividMetadata *)overlay->metaData)->_masterDisplay = 923 / 1023.0;
+
+        ((IJKHDRVividMetadata *)overlay->metaData)->_max_display_luminance = 625.f;
+        ((IJKHDRVividMetadata *)overlay->metaData)->_masterDisplay = PQinverse(625.f / 10000.0);
         
         _vividMetaDataBuffer = [_device newBufferWithBytes:overlay->metaData length:sizeof(IJKHDRVividMetadata) options:MTLResourceStorageModeShared];
         _vividCurveBuffer = [_device newBufferWithLength:sizeof(IJKHDRVividCurve) options:MTLResourceStorageModeShared];
         [computeEncoder setBuffer:_vividMetaDataBuffer offset:0 atIndex:0];
         [computeEncoder setBuffer:_vividCurveBuffer offset:0 atIndex:1];
+        [computeEncoder setBuffer:_renderConfigBuffer offset:0 atIndex:2];
 
         //将计算函数调度输入为线程组大小的倍数
         [computeEncoder dispatchThreadgroups:_threadgroupCount
@@ -290,15 +344,10 @@
         
     }
     
-    _vividMetaDataBuffer = [_device newBufferWithBytes:overlay->metaData length:sizeof(IJKHDRVividMetadata) options:MTLResourceStorageModeShared];
-    _vividCurveBuffer = [_device newBufferWithBytes:overlay->vividCure length:sizeof(IJKHDRVividCurve) options:MTLResourceStorageModeShared];
-    
-    // 渲染
-    
-    MTLRenderPassDescriptor *passDescriptor = _mtkView.currentRenderPassDescriptor;
-    if (!passDescriptor) {
-        [commandBuffer commit];
-        return NO;
+    if(renderConfig.metadataFlag && renderConfig.cureFlag){
+        _vividMetaDataBuffer = [_device newBufferWithBytes:overlay->metaData length:sizeof(IJKHDRVividMetadata) options:MTLResourceStorageModeShared];
+        _vividCurveBuffer = [_device newBufferWithBytes:overlay->vividCure length:sizeof(IJKHDRVividCurve) options:MTLResourceStorageModeShared];
+     
     }
     
     // ClearColor
@@ -306,11 +355,7 @@
     
     static id<MTLTexture> Y_MTL_Texture = nil, U_MTL_Texture = nil, V_MTL_Texture = nil;
     {
-
-//        [Y_MTL_Texture setPurgeableState:MTLPurgeableStateKeepCurrent];
-//        [U_MTL_Texture setPurgeableState:MTLPurgeableStateKeepCurrent];
-//        [V_MTL_Texture setPurgeableState:MTLPurgeableStateKeepCurrent];
-//        
+ 
         if(Y_MTL_Texture == nil || Y_MTL_Texture.width != overlay->w || Y_MTL_Texture.height != overlay->h){
             MTLTextureDescriptor *Y_textureDesc = [[MTLTextureDescriptor alloc] init];
             Y_textureDesc.pixelFormat = MTLPixelFormatR16Uint;
@@ -378,18 +423,21 @@
     [renderEncoder setFragmentBuffer:_vividMetaDataBuffer offset:0 atIndex:0];
     
     [renderEncoder setFragmentBuffer:_vividCurveBuffer offset:0 atIndex:1];
+    
+    [renderEncoder setFragmentBuffer:_renderConfigBuffer offset:0 atIndex:2];
 
-    
-    
     // 开始绘制
     [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:self.numVertices];
     // 结束渲染
     [renderEncoder endEncoding];
     
+    __weak __typeof(self)weakSelf = self;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> _Nonnull buffer) {
 //        [Y_MTL_Texture setPurgeableState:MTLPurgeableStateEmpty];
 //        [U_MTL_Texture setPurgeableState:MTLPurgeableStateEmpty];
 //        [V_MTL_Texture setPurgeableState:MTLPurgeableStateEmpty];
+        
+        [self.dsipalyLock unlock];
     }];
     
     // 提交
@@ -438,83 +486,9 @@
         { {-widthScaling, -heightScaling, 0.0, 1.0}, {0.0, 1.0} },
         { { widthScaling, -heightScaling, 0.0, 1.0}, {1.0, 1.0} },
     };
-    
+        
     self.vertices = [_device newBufferWithBytes:vertices length:sizeof(vertices) options:MTLResourceStorageModeShared];
     self.numVertices = sizeof(vertices) / sizeof(IJKSDLMetalVertex);
 }
-
-- (CVPixelBufferRef)createPixelBufferWithOverlay:(SDL_VoutOverlay *)overlay {
-    if(![self setupCVPixelBufferPool:overlay]){
-        return NULL;
-    }
-    
-    CVPixelBufferRef _pixelBufferRef;
-    CVReturn ret = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, _pixelBufferPool, &_pixelBufferRef);
-    if(ret != kCVReturnSuccess) {
-        NSLog(@"create cv buffer failed: %d", ret);
-        return NULL;
-    }
-    
-    CVPixelBufferLockBaseAddress(_pixelBufferRef, 0);
-
-    {
-        /// Y
-        size_t yBytesPerRowSize = CVPixelBufferGetBytesPerRowOfPlane(_pixelBufferRef, 0);
-        void *yBase = CVPixelBufferGetBaseAddressOfPlane(_pixelBufferRef, 0);
-        memcpy(yBase, overlay->pixels[0], yBytesPerRowSize);
-        
-        /// U
-        void *uBase = CVPixelBufferGetBaseAddressOfPlane(_pixelBufferRef, 1);
-        size_t uBytesPerRowSize = CVPixelBufferGetBytesPerRowOfPlane(_pixelBufferRef, 1);
-        memcpy(uBase, overlay->pixels[1], uBytesPerRowSize);
-        
-        /// V
-        void *vBase = CVPixelBufferGetBaseAddressOfPlane(_pixelBufferRef, 2);
-        size_t vBytesPerRowSize = CVPixelBufferGetBytesPerRowOfPlane(_pixelBufferRef, 2);
-        memcpy(vBase, overlay->pixels[2], vBytesPerRowSize);
-    }
-    
-    CVPixelBufferUnlockBaseAddress(_pixelBufferRef, 0);
-   
-    return _pixelBufferRef;
-}
-
-
-//- (BOOL)uploadTexture:(SDL_VoutOverlay *)overlay{
-//    if (!overlay) return NO;
-//          int     planes[3]    = { 0, 1, 2 };
-//    const GLsizei widths[3]    = { overlay->pitches[0] / 2, overlay->pitches[1] / 2, overlay->pitches[2] / 2 };
-//    const GLsizei heights[3]   = { overlay->h,              overlay->h,              overlay->h };
-//    const GLubyte *pixels[3]   = { overlay->pixels[0],      overlay->pixels[1],      overlay->pixels[2] };
-//
-//    switch (overlay->format) {
-//        case SDL_FCC_I444P10LE:
-//            break;
-//        default:
-//            ALOGE("[yuv420p10le] unexpected format %x\n", overlay->format);
-//            return NO;
-//    }
-//
-//    for (int i = 0; i < 3; ++i) {
-//        int plane = planes[i];
-//
-//        glBindTexture(GL_TEXTURE_2D, renderer->plane_textures[i]);  IJK_GLES2_checkError_TRACE("glBindTexture");
-//
-//        glTexImage2D(GL_TEXTURE_2D,
-//                     0,
-//                     GL_LUMINANCE_ALPHA,
-//                     widths[plane],
-//                     heights[plane],
-//                     0,
-//                     GL_LUMINANCE_ALPHA,
-//                     GL_UNSIGNED_BYTE,
-//                     pixels[plane]);    IJK_GLES2_checkError_TRACE("glTexImage2D");
-//    }
-//
-//    return GL_TRUE;
-//}
-
-
-
 
 @end

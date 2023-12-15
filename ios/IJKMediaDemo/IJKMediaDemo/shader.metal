@@ -8,10 +8,15 @@
 
 #include <metal_stdlib>
 #include <simd/simd.h>
+#include <metal_geometric>
 #include <IJKMediaFramework/IJKHDRVividDataDefine.h>
 
 using namespace metal;
 
+
+#pragma mark - Struct Define
+
+// STRUCT
 typedef struct {
     vector_float4 position;
     vector_float2 textureCoordinate;
@@ -20,138 +25,101 @@ typedef struct {
 typedef struct {
     float4 vertexPosition [[ position ]];
     float2 textureCoor;
-} RasterizerData;
+} IJKMetalRasterizerData;
 
-vertex RasterizerData vertexShader(uint vertexId [[ vertex_id ]],
-                                   constant IJKSDLMetalVertex *vertexArray [[ buffer(0) ]]) {
-    RasterizerData out;
+vertex IJKMetalRasterizerData vertexShader(uint vertexId [[ vertex_id ]],
+                                           constant IJKSDLMetalVertex *vertexArray [[ buffer(0) ]]) {
+    IJKMetalRasterizerData out;
     out.vertexPosition = vertexArray[vertexId].position;
     out.textureCoor = vertexArray[vertexId].textureCoordinate;
     return out;
 }
 
-
-float st_2084_eotf(float x){
-    const float ST2084_M1 = 0.1593017578125f;
-    const float ST2084_M2 = 78.84375f;
-    const float ST2084_C1 = 0.8359375f;
-    const float ST2084_C2 = 18.8515625f;
-    const float ST2084_C3 = 18.6875f;
-    float xpow = pow(x, float(1.0 / ST2084_M2));
-    float num = max(xpow - ST2084_C1, 0.0);
-    float den = max(ST2084_C2 - ST2084_C3 * xpow, FLT_MIN);
-    return pow(num/den, 1.0 / ST2084_M1);
-}
-
-
-float hable(float in)
-{
-    float a = 0.15f, b = 0.50f, c = 0.10f, d = 0.20f, e = 0.02f, f = 0.30f;
-    return (in * (in * a + b * c) + d * e) / (in * (in * a + b) + d * f) - e / f;
-}
-
-
-float rec_709_oetf(float x){
-    const float REC709_ALPHA = 1.09929682680944f;
-    const float REC709_BETA = 0.018053968510807f;
-    
-    x = max(x, 0.0);
-    if (x < REC709_BETA )
-        x = x * 4.5;
-    else
-        x = REC709_ALPHA * pow(x, 0.45f) - (REC709_ALPHA - 1.0);
-    return x;
-}
-
-
-
+#pragma mark - Common Function
 #define FFMAX(a,b) ((a) > (b) ? (a) : (b))
 #define FFMAX3(a,b,c) FFMAX(FFMAX(a,b),c)
 
+float clip(float val, float low, float high){
+    val = max(val, low);
+    val = min(val, high);
+    return val;
+}
 
+float3 clip3(float3 val, float low, float high){
+    val.x =  clip(val.x, low, high);
+    val.y =  clip(val.y, low, high);
+    val.z =  clip(val.z, low, high);
+    return val;
+}
 
-//fragment float4 fragmentShader(RasterizerData input [[ stage_in ]],
-//                               texture2d <ushort> yTexture [[ texture(0) ]],
-//                               texture2d <ushort> uTexture [[ texture(1) ]],
-//                               texture2d <ushort> vTexture [[ texture(2) ]]) {
-//    
-//    uint posX = uint(input.textureCoor.x * yTexture.get_width());
-//    uint posY = uint(input.textureCoor.y * yTexture.get_height());
-//    
-//    uint uint4_y = yTexture.read(uint2(posX, posY)).r;
-//    uint uint4_u = uTexture.read(uint2(posX/2, posY/2)).r;
-//    uint uint4_v = vTexture.read(uint2(posX/2, posY/2)).r;
-//    
-//    uint3 yuv10bit = uint3(uint4_y , uint4_u , uint4_v);
-//    
-//    int y = int(yuv10bit.x);
-//    int u = int(yuv10bit.y);
-//    int v = int(yuv10bit.z);
-//    
-//    
-//    float3 rgb;
-//    
-//    // [64, 960]
-//    float r = float(y - 64) * 1.164384                             - float(v - 512) * -1.67867;
-//    float g = float(y - 64) * 1.164384 - float(u - 512) * 0.187326 - float(v - 512) * 0.65042;
-//    float b = float(y - 64) * 1.164384 - float(u - 512) * -2.14177;
-//    
-//    rgb.r = r ;
-//    rgb.g = g ;
-//    rgb.b = b ;
-//    
-//    //    float ST2084_PEAK_LUMINANCE = 10000.0f;
-//    //    float peak_luminance = 1000.0f;
-//    //    float to_linear_scale = ST2084_PEAK_LUMINANCE / peak_luminance;
-//    //
-//    //       float3 fragColor = to_linear_scale * float3(st_2084_eotf(rgb.r), st_2084_eotf(rgb.g), st_2084_eotf(rgb.b));
-//    //       return float4(rgb + float3(0.0), 1.f);
-//    
-//    rgb.r = r / 1024;
-//    rgb.g = g / 1024;
-//    rgb.b = b / 1024;
-//    
-////    return float4(rgb + float3(0.0), 1.f);
-//    
-//    
-//    
-//    
-//    
-//        float ST2084_PEAK_LUMINANCE = 10000.0f;
-//        float peak_luminance = 1000.0f;
-//        float to_linear_scale = ST2084_PEAK_LUMINANCE / peak_luminance;
-//    
-//        float3 fragColor = to_linear_scale * float3(st_2084_eotf(rgb.r), st_2084_eotf(rgb.g), st_2084_eotf(rgb.b));
-//    
-//        float sig;
-//        float sig_orig;
-//        sig = FFMAX(FFMAX3(fragColor.r, fragColor.g, fragColor.b), 1e-6);
-//        sig_orig = sig;
-//        float peak = 4; // 手机设备的最大亮度值MaxCLL / REFERENCE_WHITE(固定100);
-//        sig = hable(sig) / hable(peak);
-//        fragColor.r = fragColor.r * (sig / sig_orig);
-//        fragColor.g = fragColor.g * (sig / sig_orig);
-//        fragColor.b = fragColor.b * (sig / sig_orig);
-//    
-//        fragColor = float3(rec_709_oetf(fragColor.r), rec_709_oetf(fragColor.g), rec_709_oetf(fragColor.b));
-//    
-//    
-//        return float4(fragColor*4 + float3(0.0), 1.f);
-//}
+float PQforward(float value){
+    float a1 = (2610.0) / (4096.0 * 4.0);
+    float a2 = (2523.0 * 128.0) / 4096.0;
+    float b1 = (3424.0) / 4096.0;
+    float b2 = (2413.0 * 32.0) / 4096.0;
+    float b3 = (2392.0 * 32.0) / 4096.0;
+    value = clip(value, 0, 1.0);
+    float tempValue = pow(value, (1.0 / a2));
+    return (pow(max(0.0, (tempValue - b1)) / (b2 - b3 * tempValue), (1.0 / a1)));
+}
 
-/////////////////////////////////
+float PQinverse(float value){
+    float a1 = (2610.0) / (4096.0 * 4.0);  // 0.1593
+    float a2 = (2523.0 * 128.0) / 4096.0; // 78.8438
+    float b1 = (3424.0) / 4096.0; // 0.8359
+    float b2 = (2413.0 * 32.0) / 4096.0; // 18.8516
+    float b3 = (2392.0 * 32.0) / 4096.0; // 18.6875
+    value = clip(value, 0, 1.0);
+    float tempValue = pow(value, a1);
+    return (float)(pow(((b2 * (tempValue)+b1) / (1.0 + b3 * (tempValue))), a2));
+}
 
-typedef enum ProcessMode{
-    Preprocess = 0,
-    PostprocessHDR,
-    PostprocessSDR
-}ProcessMode;
+float fAbs(float x) {
+    return ((x) < 0) ? -(x) : (x);
+}
+
+float fSign(float x) {
+    return ((x) < 0.0) ? -1.0f : 1.0f;
+}
+
+float fRound(float x) {
+    return (fSign(x) * floor((fAbs(x) + 0.5f)));
+}
+
+float fMin(float a, float b) {
+    return ((a) < (b)) ? (a) : (b);
+}
+
+float fMax(float a, float b) {
+    return ((a) > (b)) ? (a) : (b);
+}
+
+float dClip(float x, float low, float high) {
+    x = fMax(x, low);
+    x = fMin(x, high);
+    return x;
+}
+
+#pragma mark - Color Space Trans
+constant half3 kRec709Luma(.2126f,.7152f,.0722f);
+constant float kLuminanceEpsilon = .001f;
+float3 RinehardOperator(float3 srcColor, float luminanceScale){
+    half3 halfsrcColor = half3(srcColor.r, srcColor.g, srcColor.b);
+    float luminance = dot(halfsrcColor, ::kRec709Luma) + kLuminanceEpsilon;
+    float targetLuminance = 1.f / (1.f + luminance);
+    return srcColor * targetLuminance * luminanceScale;
+}
+
 
 #define TPA_NUM 4
-
 float getBaseCurveParameterAdjust(thread IJKHDRVividCurve *curve){
-    float TPA[TPA_NUM][2] = { { 2.5,0.99 },{ 3.5,0.879 },{ 4.5,0.777 },{ 7.5,0.54 } };
-
+    float TPA[TPA_NUM][2] = {
+        {2.5, 0.99},
+        {3.5, 0.879},
+        {4.5, 0.777},
+        {7.5, 0.54}
+    };
+    
     int index = 0;
     float M_a_T = TPA[0][1];
     for (int i = 0; i < TPA_NUM; i++){
@@ -185,7 +153,7 @@ void AdjustVividParameter(float m_maxE, float m_inputMaxE, thread IJKHDRVividCur
     if ((curve->m_m < 2.35) || (curve->m_m > 2.45) || (curve->m_n < 0.95) || (curve->m_n > 1.05)){
         return;
     }
-
+    
     if (m_inputMaxE < m_maxE) {
         m_inputMaxE = m_maxE;
     }
@@ -199,11 +167,11 @@ void AdjustVividParameter(float m_maxE, float m_inputMaxE, thread IJKHDRVividCur
     float WA = temp1 - temp2;
     if (WA < 0) WA = 0;
     WA /= (1 - temp2);
-
+    
     if (curve->curve_mintiao){
         temp = (1 - (curve->DARKcurble_S1)) * WA;
         curve->DARKcurble_S1 += temp;
-
+        
         float TH1temp = curve->TH1;
         float TH2temp = curve->TH2;
         float TH3temp = curve->TH3;
@@ -213,38 +181,9 @@ void AdjustVividParameter(float m_maxE, float m_inputMaxE, thread IJKHDRVividCur
         curve->TH3 = curve->TH2 + TH3temp - TH2temp;
         curve->m_b *= (1 - WA);
     }else{
-
+        
     }
 }
-
-float clip(float val, float low, float high){
-    val = max(val, low);
-    val = min(val, high);
-    return val;
-}
-
-float PQforward(float value){
-    float a1 = (2610.0) / (4096.0 * 4.0);
-    float a2 = (2523.0 * 128.0) / 4096.0;
-    float b1 = (3424.0) / 4096.0;
-    float b2 = (2413.0 * 32.0) / 4096.0;
-    float b3 = (2392.0 * 32.0) / 4096.0;
-    value = clip(value, 0, 1.0);
-    float tempValue = pow(value, (1.0 / a2));
-    return (pow(max(0.0, (tempValue - b1)) / (b2 - b3 * tempValue), (1.0 / a1)));
-}
-
-float PQinverse(float value){
-    float a1 = (2610.0) / (4096.0 * 4.0);
-    float a2 = (2523.0 * 128.0) / 4096.0;
-    float b1 = (3424.0) / 4096.0;
-    float b2 = (2413.0 * 32.0) / 4096.0;
-    float b3 = (2392.0 * 32.0) / 4096.0;
-    value = clip(value, 0, 1.0);
-    float tempValue = pow(value, a1);
-    return (float)(pow(((b2 * (tempValue)+b1) / (1.0 + b3 * (tempValue))), a2));
-}
-
 
 float genBaseCurveParameter(device IJKHDRVividMetadata* metadata,
                             float MasterDisplay,
@@ -269,25 +208,25 @@ float genBaseCurveParameter(device IJKHDRVividMetadata* metadata,
     //std::cout << "10-1-1 " << std::endl;
     float lowThreshold;
     float highThreshold;
-    if (mode == PostprocessSDR){
+    if (mode == IJKMetalPostprocessSDR){
         lowThreshold = 0.1;
-    }else if (mode == PostprocessHDR) {
+    }else if (mode == IJKMetalPostprocessHDR) {
         lowThreshold = 0.3;
     }
     
     if (average_maxrgb_noLine > 0.6){
         curve->m_p = 3.5;
     } else if (average_maxrgb_noLine > lowThreshold && average_maxrgb_noLine <= 0.6) {
-        if (mode == PostprocessSDR){
+        if (mode == IJKMetalPostprocessSDR){
             curve->m_p = 6.0 + (average_maxrgb_noLine - 0.1) / (0.6 - 0.1) * (3.5 - 6.0);
-        }else if (mode == PostprocessHDR){
+        }else if (mode == IJKMetalPostprocessHDR){
             curve->m_p = 4.0 + (average_maxrgb_noLine - 0.3) / (0.6 - 0.3) * (3.5 - 4.0);
         }
     }
     else{
-        if (mode == PostprocessSDR){
+        if (mode == IJKMetalPostprocessSDR){
             curve->m_p = 6.0;
-        } else if (mode == PostprocessHDR){
+        } else if (mode == IJKMetalPostprocessHDR){
             curve->m_p = 4.0;
         }
     }
@@ -313,7 +252,7 @@ float genBaseCurveParameter(device IJKHDRVividMetadata* metadata,
         m_inputMaxE = m_maxE;
     }
     
-    if (mode == PostprocessSDR){
+    if (mode == IJKMetalPostprocessSDR){
         lowThreshold = 0.67;
         highThreshold = 0.75;
     } else /*(mode == PostprocessHDR)*/ {
@@ -324,16 +263,16 @@ float genBaseCurveParameter(device IJKHDRVividMetadata* metadata,
     if (m_inputMaxE > highThreshold){
         curve->m_p = curve->m_p + 0.6;
     } else if (m_inputMaxE > lowThreshold && m_inputMaxE <= highThreshold){
-        if (mode == PostprocessSDR){
+        if (mode ==     IJKMetalPostprocessSDR){
             curve->m_p = curve->m_p + 0.3 + (m_inputMaxE - 0.67) / (0.75 - 0.67) * (0.6 - 0.3);
-        } else if (mode == PostprocessHDR){
+        } else if (mode ==     IJKMetalPostprocessHDR){
             curve->m_p = curve->m_p + 0.0 + (m_inputMaxE - 0.75) / (0.9 - 0.75) * (0.6 - 0.0);
         }
     } else {
-        if (mode == PostprocessSDR){
+        if (mode ==     IJKMetalPostprocessSDR){
             curve->m_p = curve->m_p + 0.3;
         }
-        else if (mode == PostprocessHDR){
+        else if (mode ==     IJKMetalPostprocessHDR){
             curve->m_p = curve->m_p + 0.0;
         }
     }
@@ -460,27 +399,27 @@ float low_area_spline(float maximum_maxrgb,
     
     float s1 = 1.0;
     if (average_maxrgb > 0.6){
-        if (mode == PostprocessSDR){
+        if (mode ==     IJKMetalPostprocessSDR){
             s1 = 0.9;
-        } else if (mode == PostprocessHDR){
+        } else if (mode == IJKMetalPostprocessHDR){
             threshold1 = 0.1;
             s1 = 0.96;
         }
     } else if (average_maxrgb > 0.3 && average_maxrgb <= 0.6) {
-        if (mode == PostprocessSDR){
+        if (mode ==     IJKMetalPostprocessSDR){
             s1 = 1.0 + (average_maxrgb - 0.3) / (0.6 - 0.3) * (0.9 - 1.0);
-        }else if (mode == PostprocessHDR){
+        }else if (mode == IJKMetalPostprocessHDR){
             threshold1 = 0.25 + (average_maxrgb - 0.3) / (0.6 - 0.3) * (0.1 - 0.25);
             s1 = 1.0 + (average_maxrgb - 0.3) / (0.6 - 0.3) * (0.96 - 1.0);
         }
     } else{
-        if (mode == PostprocessHDR){
+        if (mode == IJKMetalPostprocessHDR){
             threshold1 = 0.25;
         }
         s1 = 1.0;
     }
     
-    if (mode == PostprocessSDR){
+    if (mode == IJKMetalPostprocessSDR){
         threshold1 = 0.0;
     }
     threshold2 = threshold1 + 0.15;
@@ -538,7 +477,7 @@ float low_area_spline(float maximum_maxrgb,
     y2 = pow(y2, m_mtemp);
     y2 = m_atemp * y2 + m_btemp;
     
-    if (mode == PostprocessHDR)
+    if (mode == IJKMetalPostprocessHDR)
     {
         if (threshold3 - threshold1)
         {
@@ -898,7 +837,7 @@ void genCubicSplineParameter(device IJKHDRVividMetadata* metadata,
         curve->DARKcurble_S1 = dark;
         curve->DARKcurble_offset = DARKcurble_offset;
         curve->curve_mintiao = curve_mintiao;
-
+        
         curve->TH1 = P3Spline_TH[0];
         curve->TH2 = P3Spline_TH[1];
         curve->TH3 = P3Spline_TH[2];
@@ -989,7 +928,7 @@ void genCubicSplineParameter(device IJKHDRVividMetadata* metadata,
                                                       &DARKcurble_offset,
                                                       &curve_mintiao,
                                                       metadata->base_param_Delta_mode[0]);
-            
+                
                 curve->md1 = md1g;
                 curve->mc1 = mc1g;
                 curve->mb1 = mb1g;
@@ -1108,15 +1047,18 @@ void genCubicSplineParameter(device IJKHDRVividMetadata* metadata,
 }
 
 kernel void initCUVAParams(device IJKHDRVividMetadata *metadata [[ buffer(0) ]],
-                           device IJKHDRVividCurve *curve [[ buffer(1) ]]){
+                           device IJKHDRVividCurve *curve [[ buffer(1) ]],
+                           device IJKHDRVividRenderConfig *config [[ buffer(2) ]]){
     
     thread float m_maxEtemp;
     thread float m_inputMaxEtemp;
-    
-    //         InitParams(maxDisplay, metadata, MasterDisplayPQ, &curve, GTMcurve2);
-    
+        
     float MaxDisplay = (float)(PQinverse(metadata->_max_display_luminance / 10000.0));
     float MinDisplay = (float)(PQinverse(0.05/10000.00));
+    
+    if (config->processMode == IJKMetalPostprocessSDR) {
+        MinDisplay = (float)(PQinverse(0.1/10000.00));
+    }
     
     genBaseCurveParameter(metadata,
                           metadata->_masterDisplay,
@@ -1125,19 +1067,14 @@ kernel void initCUVAParams(device IJKHDRVividMetadata *metadata [[ buffer(0) ]],
                           curve,
                           &m_maxEtemp,
                           &m_inputMaxEtemp,
-                          PostprocessHDR);
+                          config->processMode);
     
     genCubicSplineParameter(metadata,
                             m_maxEtemp,
                             m_inputMaxEtemp,
                             curve,
-                            PostprocessHDR);
-    
-    
-        //float GTMcurve2[256] = { 0 };
-    
-    
-
+                            config->processMode);
+        
     curve->inputMaxEtemp_store = m_inputMaxEtemp;
     curve->maxEtemp_store = m_maxEtemp;
     
@@ -1145,12 +1082,10 @@ kernel void initCUVAParams(device IJKHDRVividMetadata *metadata [[ buffer(0) ]],
     curve->TML = MaxDisplay;
     curve->TML_linear = (float)(10000 * PQforward(curve->TML));
     curve->RML = metadata->_masterDisplay;
-
+    
     curve->RML_linear = (float)(10000 * PQforward(curve->RML));
     if (curve->TML_linear > curve->RML_linear) curve->RML_linear = curve->TML_linear;
     if (curve->TML > curve->RML) curve->RML = curve->TML;
-
-    
 }
 
 
@@ -1179,7 +1114,7 @@ float calc_curve(float max, device const IJKHDRVividCurve *TMP)
         else  if ((max > TMP->TH3_HIGH) && (TMP->high_area_flag == 0))
         {
             max1 = (3 * TMP->md2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 2) + 2 * TMP->mc2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 1) + TMP->mb2_high)*(max - TMP->TH3_HIGH)
-                + TMP->md2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 3) + TMP->mc2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 2) + TMP->mb2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 1) + TMP->ma2_high;
+            + TMP->md2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 3) + TMP->mc2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 2) + TMP->mb2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 1) + TMP->ma2_high;
         }
         else
         {
@@ -1212,13 +1147,10 @@ float calc_curve(float max, device const IJKHDRVividCurve *TMP)
             max1 = TMP->md1_high * pow((max - TMP->TH1_HIGH), 3) + TMP->mc1_high * pow((max - TMP->TH1_HIGH), 2) + TMP->mb1_high * pow((max - TMP->TH1_HIGH), 1) + TMP->ma1_high;
         else if (max > TMP->TH2_HIGH&&max <= TMP->TH3_HIGH)
             max1 = TMP->md2_high * pow((max - TMP->TH2_HIGH), 3) + TMP->mc2_high * pow((max - TMP->TH2_HIGH), 2) + TMP->mb2_high * pow((max - TMP->TH2_HIGH), 1) + TMP->ma2_high;
-        else  if ((max > TMP->TH3_HIGH) && (TMP->high_area_flag == 0))
-        {
+        else  if ((max > TMP->TH3_HIGH) && (TMP->high_area_flag == 0)){
             max1 = (3 * TMP->md2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 2) + 2 * TMP->mc2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 1) + TMP->mb2_high)*(max - TMP->TH3_HIGH)
-                + TMP->md2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 3) + TMP->mc2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 2) + TMP->mb2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 1) + TMP->ma2_high;
-        }
-        else
-        {
+            + TMP->md2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 3) + TMP->mc2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 2) + TMP->mb2_high * pow((TMP->TH3_HIGH - TMP->TH2_HIGH), 1) + TMP->ma2_high;
+        } else {
             max = pow(max, TMP->m_n);
             max1 = (TMP->m_p * max / ((TMP->K1 * TMP->m_p - TMP->K2) * max + TMP->K3));
             max1 = pow(max1, TMP->m_m);
@@ -1245,26 +1177,10 @@ float getB(float smCoef, float Y_PQ, float m_inputMaxE, device const IJKHDRVivid
     return smCoef;
 }
 
-float fMin(float a, float b) {
-    return ((a) < (b)) ? (a) : (b);
-}
 
-float fMax(float a, float b) {
-    return ((a) > (b)) ? (a) : (b);
-}
-
-float dClip(float x, float low, float high) {
-    x = fMax(x, low);
-    x = fMin(x, high);
-
-    return x;
-}
-
-float saturation_modify(float Y_PQ, float MaxDisplay,  device const IJKHDRVividMetadata *metadata, device const IJKHDRVividCurve *tone_mapping_param)
-{
+float saturation_modify(float Y_PQ, float MaxDisplay,  device const IJKHDRVividMetadata *metadata, device const IJKHDRVividCurve *tone_mapping_param){
     float smCoef = 0.0;
-    if (metadata->color_saturation_mapping_flag == 0)
-    {
+    if (metadata->color_saturation_mapping_flag == 0){
         smCoef = 1.0;
         return smCoef;
     }
@@ -1274,33 +1190,29 @@ float saturation_modify(float Y_PQ, float MaxDisplay,  device const IJKHDRVividM
     float power_used = float(metadata->color_saturation_gain[0]) / 128.0;
     float scale = Yout_pq / Yin_pq;
     smCoef = pow(scale, power_used);
-    smCoef = dClip(smCoef, 0.8, 1.0);
+    smCoef = clip(smCoef, 0.8, 1.0);
     float B = getB(smCoef, MaxDisplay, tone_mapping_param->inputMaxEtemp_store, metadata, tone_mapping_param);
-
+    
     //apply C1
     float SATR = 0.4;
     float C1 = 0.0;
     float C2 = 1.0;
-
-    if ((metadata->color_saturation_mapping_flag) && (metadata->color_saturation_num > 1))
-    {
+    
+    if ((metadata->color_saturation_mapping_flag) && (metadata->color_saturation_num > 1)){
         C1 = float(metadata->color_saturation_gain[1] & 0xFC) / 128.0;
         C2 = float(metadata->color_saturation_gain[1] & 0x3);
         C2 = pow(2, C2);
     }
-    if (C1 == 0.0)
-    {
+    if (C1 == 0.0){
         return B;
     }
     float Sca = 1.0;
-    if (Yin_pq >= tone_mapping_param->RML)
-    {
+    if (Yin_pq >= tone_mapping_param->RML){
         if (B >= C1 * SATR) Sca = B - C1 * SATR;
         else Sca = 0;
         smCoef = Sca;
     }
-    else if (Yin_pq >= tone_mapping_param->TML)
-    {
+    else if (Yin_pq >= tone_mapping_param->TML){
         float ratioC = (Yin_pq - tone_mapping_param->TML) / (tone_mapping_param->RML - tone_mapping_param->TML);
         ratioC = pow(ratioC, C2);
         if (B >= C1 * SATR * ratioC)    Sca = B - C1 * SATR * ratioC;
@@ -1311,270 +1223,314 @@ float saturation_modify(float Y_PQ, float MaxDisplay,  device const IJKHDRVividM
 }
 
 
-
-//fragment float4 fragmentShader(RasterizerData input [[ stage_in ]],
-//                               texture2d <ushort> yTexture [[ texture(0) ]],
-//                               texture2d <ushort> uTexture [[ texture(1) ]],
-//                               texture2d <ushort> vTexture [[ texture(2) ]],
-//                               device const IJKHDRVividMetadata *metadata [[ buffer(1) ]],
-//                               device const IJKHDRVividCurve *curve [[ buffer(2) ]]) {
-//    
-//    uint posX = uint(input.textureCoor.x * yTexture.get_width());
-//    uint posY = uint(input.textureCoor.y * yTexture.get_height());
-//    
-//    uint uint4_y = yTexture.read(uint2(posX, posY)).r;
-//    uint uint4_u = uTexture.read(uint2(posX/2, posY/2)).r;
-//    uint uint4_v = vTexture.read(uint2(posX/2, posY/2)).r;
-//    
-//    uint3 yuv10bit = uint3(uint4_y , uint4_u , uint4_v);
-//    
-//    int y = int(yuv10bit.x);
-//    int u = int(yuv10bit.y);
-//    int v = int(yuv10bit.z);
-//    
-//    float3 rgb;
-//    
-//    // [64, 960]
-//    float r = float(y - 64) * 1.164384                             - float(v - 512) * -1.67867;
-//    float g = float(y - 64) * 1.164384 - float(u - 512) * 0.187326 - float(v - 512) * 0.65042;
-//    float b = float(y - 64) * 1.164384 - float(u - 512) * -2.14177;
-//    
-//    rgb.r = r / 1024;
-//    rgb.g = g / 1024;
-//    rgb.b = b / 1024;
-//    
-//    //compute the maximum value of the three channel
-//    
-//    float comp0 = rgb.r;
-//    float comp1 = rgb.g;
-//    float comp2 = rgb.b;
-//    
-//    float maxComp0 = (float)(PQinverse(comp0 / 10000));
-//    float maxComp1 = (float)(PQinverse(comp1 / 10000));
-//    float maxComp2 = (float)(PQinverse(comp2 / 10000));
-//    
-//    float max =  FFMAX3( comp0,  comp1,  comp2);
-//    float maxO = max;
-//    float maxC = max;
-//    
-//    max = FFMAX3(maxComp0, maxComp1, maxComp2);
-//    float max1 = max;
-//    max1 = calc_curve(max, curve);
-//    
-//    float lumRatio;
-//    {
-//        if (max > 0) {
-//            lumRatio = max1 / max;
-//        } else {
-//            lumRatio = 1.0;
-//        }
-//        maxC = (float)(10000 * PQforward(max1));
-//        lumRatio = maxO <= 0 ? 1 : maxC / maxO;
-//
-//        comp0 = (float)lumRatio * y;
-//        comp1 = (float)lumRatio * u;
-//        comp2 = (float)lumRatio * v;
-//
-//        if (max)
-//        {
-//            comp0 = (float)(PQinverse(comp0 / 10000));
-//            comp1 = (float)(PQinverse(comp1 / 10000));
-//            comp2 = (float)(PQinverse(comp2 / 10000));
-//
-//            float Y = 0.262700 * comp0 + 0.678000 * comp1 + 0.059300 * comp2;
-//            float U = -0.1396*comp0 - 0.3604*comp1 + 0.5*comp2;
-//            float V = 0.5*comp0 - 0.4598*comp1 - 0.0402*comp2;
-//
-//            float smCoef = saturation_modify(max, curve->maxEtemp_store, metadata, curve);
-//            U = U * smCoef;
-//            V = V * smCoef;
-//
-//            comp0 = (float)(1.0000*Y - 0.0000*U + 1.4746*V);
-//            comp1 = (float)(1.0000*Y - 0.1645*U - 0.5713*V);
-//            comp2 = (float)(1.0000*Y + 1.8814*U - 0.0001*V);
-//
-//            comp0 = clip(comp0, 0.0f, 1.0f);
-//            comp1 = clip(comp1, 0.0f, 1.0f);
-//            comp2 = clip(comp2, 0.0f, 1.0f);
-//
-//            comp0 = (float)(PQforward(comp0) * 10000);
-//            comp1 = (float)(PQforward(comp1) * 10000);
-//            comp2 = (float)(PQforward(comp2) * 10000);
-//        }
-//    }
-//    
-//    rgb.r = comp0;
-//    rgb.g = comp1;
-//    rgb.b = comp2;
-//    
-//    
-//    return float4(rgb + float3(0.0), 1.f);
-//    
-//
-//}
-
-float fAbs(float x) {
-    return ((x) < 0) ? -(x) : (x);
+float3 PQtoLinear(float3 val){
+    val.r = 10000.0 * PQforward(val.r);
+    val.g = 10000.0 * PQforward(val.g);
+    val.b = 10000.0 * PQforward(val.b);
+    return val;
 }
 
-float fSign(float x) {
-    return ((x) < 0.0) ? -1.0f : 1.0f;
+
+float3 PQinverse3(float3 val){
+    val.r = PQinverse(val.r / 10000.0);
+    val.g = PQinverse(val.g / 10000.0);
+    val.b = PQinverse(val.b / 10000.0);
+    return val;
 }
 
-float fRound(float x) {
-    return (fSign(x) * floor((fAbs(x) + 0.5f)));
+float max3(float3 val){
+    return FFMAX3(val.r, val.g, val.b);
 }
 
-//ushort3 getYUVFromTexture(uint2 coor,
-//                         texture2d<ushort> const yTexture,
-//                         texture2d<ushort> const uTexture,
-//                         texture2d<ushort> const vTexture){
-//    
-//    ushort3 yuv;
-//    yuv.x = yTexture.read(coor).r;
-//    
-//    int32_t Fixed32Filter[4][4];
-//    Fixed32Filter[0][0] = (int32_t)fRound(-8.0);
-//    Fixed32Filter[0][1] = (int32_t)fRound(64.0);
-//    Fixed32Filter[0][2] = (int32_t)fRound(216.0);
-//    Fixed32Filter[0][3] = (int32_t)fRound(-16.0);
-//    Fixed32Filter[1][0] = (int32_t)fRound(-16.0);
-//    Fixed32Filter[1][1] = (int32_t)fRound(216.0);
-//    Fixed32Filter[1][2] = (int32_t)fRound(64.0);
-//    Fixed32Filter[1][3] = (int32_t)fRound(-8.0);
-//    Fixed32Filter[2][0] = (int32_t)fRound(0.0);
-//    Fixed32Filter[2][1] = (int32_t)fRound(256.0);
-//    Fixed32Filter[3][0] = (int32_t)fRound(-10.0);
-//    Fixed32Filter[3][1] = (int32_t)fRound(138.0);
-//    Fixed32Filter[3][2] = (int32_t)fRound(138.0);
-//    Fixed32Filter[3][3] = (int32_t)fRound(-10.0);
-//    
-//    
-//    int scalerX = coor.x / 2;
-//    int scalerY = coor.y / 2;
-//    int textureWidth =  yTexture.get_width();
-//    int textureHeight = yTexture.get_height();
-//    
-//    int32_t Fixed32Data[4] = {0};
-//    {
-//        int m;
-//        int value = 0;
-//        for (m = 0; m < 4; m++) {
-//            uint uValue = uTexture.read(uint2(scalerX, scalerY)).r;
-//            value += Fixed32Filter[0][m] * uValue;
-//        }
-//        
-//        Fixed32Data[(2 * j) * ((out->pic_width[k]) / 2) + i] = (value + 0) >> 0;
-//    }
-//    
-//    
-//}
+float HLGforward(float value){
+    return (value <= 0.5 ? (value * value / 3.0) : (exp((value - 1.00429347) / 0.17883277) + 0.02372241));
+}
 
 
+float3 HLGtoLinear(float3 color, float peaklum){
+    float comp00lineTemp = HLGforward(color.r);
+    float comp11lineTemp = HLGforward(color.g);
+    float comp22lineTemp = HLGforward(color.b);
+    // BT2020
+    float comp22YTemp = 0.262700 * comp00lineTemp + 0.678000 * comp11lineTemp + 0.059300 * comp22lineTemp;
+    // Normally the peak luminance of HLG is 1000nits
+    float gamma = 1.2 + 0.42 * log10(peaklum/1000.0);
+    float comp22YTempgamma = pow(comp22YTemp, gamma);
+    float comp22YTempscale = comp22YTempgamma / comp22YTemp;
+    float comp00line = comp00lineTemp * comp22YTempscale * peaklum;
+    float comp11line = comp11lineTemp * comp22YTempscale * peaklum;
+    float comp22line = comp22lineTemp * comp22YTempscale * peaklum;
+    
+    color.r = comp00line;
+    color.g = comp11line;
+    color.b = comp22line;
+    return color;
+}
+
+float GetLw(device const IJKHDRVividMetadata *metadata){
+    if(metadata->system_start_code == 0x1 || metadata->system_start_code == 0x2){
+        return 1000.0;
+    }else if(metadata->system_start_code == 0x3 ||
+             metadata->system_start_code == 0x4 ||
+             metadata->system_start_code == 0x5 ||
+             metadata->system_start_code == 0x6 ||
+             metadata->system_start_code == 0x7){
+        return (float)(2000.0*(metadata->system_start_code - 2));
+    }else{
+        return -1.00;
+    }
+}
 
 
+#pragma mark - SDR
 
-fragment float4 fragmentShader(RasterizerData input [[ stage_in ]],
+float3 BT2020toBT709(float3 color){
+    float comp0 = color.r;
+    float comp1 = color.g;
+    float comp2 = color.b;
+    
+    color.r = (float)(1.6605 * comp0 - 0.5876 * comp1 -0.0728 * comp2); //see R-REP-BT2407-2017-PDF-E.pdf section 2.2 on page 4
+    color.g = (float)(-0.1246 * comp0 + 1.1329 * comp1 - 0.0083 * comp2);
+    color.b = (float)(-0.0182 * comp0 - 0.1006 * comp1 + 1.1187 * comp2);
+    
+    return color;
+}
+
+float Gammainverse(float value){
+    float E;
+    value = dClip(value, 0.0, 1.0);
+    E = pow(value, 1.0 / 2.2);
+    E = dClip(E, 0, 1.0);
+    return E;
+}
+
+float GammaForward(float value){
+    float E;
+    value = dClip(value, 0.0, 1.0);
+    E = pow(value,2.2); //see 005.1 chap 11.2,step g) gamma is 2.2
+    E = dClip(E, 0, 1.0);
+    return E;
+}
+
+
+constant float kGammaScaleFactor(100.0f);
+float3 LineartoGamma(float3 color){
+    color.r = (float)Gammainverse(color.r / kGammaScaleFactor);
+    color.g = (float)Gammainverse(color.g / kGammaScaleFactor);
+    color.b = (float)Gammainverse(color.b / kGammaScaleFactor);
+    
+    return color;
+}
+
+
+float3 GammatoLinear(float3 color){
+    color.r = kGammaScaleFactor * GammaForward(color.r);
+    color.g = kGammaScaleFactor * GammaForward(color.g);
+    color.b = kGammaScaleFactor * GammaForward(color.b);
+    return color;
+}
+
+#pragma mark - SDR HLG Static
+constant float KP1(0.5247f);
+constant float KP2(0.7518);
+constant float maxDL(0.638285);
+constant float maxSL(0.7518);
+#define x0               KP1
+#define x1               maxSL
+#define y0               KP1
+#define y1               maxDL
+#define y0delta          1
+#define y1delta          0
+#define x1Minusx0Square  ((x1-x0)*(x1-x0))
+#define x1Minusx0Spline  (x1Minusx0Square*(x1-x0))
+
+float hmt(float x){
+    float alpha0 ,alpha1,beta0,beta1;
+    alpha0 =(x1 - 3*x0 + 2*x)*(x1 - x)*(x1 - x)/x1Minusx0Spline;
+    alpha1 =(3*x1 - x0 - 2*x)*(x-x0)*(x-x0)/x1Minusx0Spline;
+    beta0  =(x-x0)*(x-x1)*(x-x1)/x1Minusx0Square;
+    beta1  =(x-x0)*(x-x0)*(x-x1)/x1Minusx0Square;
+    return y0*alpha0 + y1*alpha1 + y0delta*beta0 +y1delta*beta1;
+}
+
+// equation (161) of T/UWA 005.1-2022 V1.2
+float ftm(float e){
+    if(e<=KP1){
+        return e;
+    }else if((e>KP1) && (e<KP2)){
+        return hmt(e);
+    }else{
+        return maxDL;
+    }
+}
+
+float3 HLGHDRStaticAdaptToSDR(float3 yuv){
+    float RsDelta,GsDelta,BsDelta;
+    float RtDelta,GtDelta,BtDelta;
+    float Yt,Cbt,Crt;
+    float Yd;
+    float Ysf, Cbsf,Crsf;
+    float Yts,Cbts,Crts;
+    float Rs,Gs,Bs,Ys,Rt,Gt,Bt;
+    float Ytpq,Ydpq;
+    float TmGain,SmGain;
+    //float Yo,Cbo,Cro;
+    
+    Ysf  = (float)(yuv.r -  64)/876;
+    Cbsf = (float)(yuv.g - 512)/896;
+    Crsf = (float)(yuv.b - 512)/896;  //T/UWA 005.1-2022 V1.2 page 41 11.2 quation (156)
+    RsDelta = Ysf + 0*Cbsf +  1.4746*Crsf;
+    GsDelta = Ysf - 0.1645*Cbsf - 0.5713*Crsf;
+    BsDelta = Ysf + 1.8814*Cbsf + 0*Crsf;       //equation (157)
+    
+    RsDelta = dClip(RsDelta,0,1.0);
+    GsDelta = dClip(GsDelta,0,1.0);
+    BsDelta = dClip(BsDelta,0,1.0);
+    
+    Rs = HLGforward(RsDelta);
+    Gs = HLGforward(GsDelta);
+    Bs = HLGforward(BsDelta);                          //equation (14) on page 6 of T/UWA 005.1-2022 V1.2
+    
+    Ys = 0.2627*Rs + 0.6780*Gs + 0.0593*Bs;            //equation (158)
+    Ys = dClip(Ys,0,1.0);
+    Yd = 1000.0*pow(Ys,1.2);                           //equation (159)
+    Ydpq  = (float)PQinverse(Yd/10000);                //equation (160)
+    Ytpq  = ftm(Ydpq);                                 //equation (161)
+    Yt = (float)(10000*PQforward(Ytpq));               //equation (162)
+    Yt = dClip(Yt,0,350);
+    
+    TmGain = (Ys!=0)?(Yt/Ys):0;                       //equation (163)
+    SmGain = (Ys!=0)?(pow(Yt/(1000*Ys),0.2)):0;       //equation (164)
+    
+    Rt = dClip((Rs*TmGain)/350,0,1.0);                //equation (165)
+    Gt = dClip((Gs*TmGain)/350,0,1.0);
+    Bt = dClip((Bs*TmGain)/350,0,1.0);
+    RtDelta = dClip(pow(Rt,1/2.2),0,1);               //equation (166)
+    GtDelta = dClip(pow(Gt,1/2.2),0,1);
+    BtDelta = dClip(pow(Bt,1/2.2),0,1);
+    
+    Yt    =  0.2627*RtDelta + 0.6780*GtDelta + 0.0593*BtDelta;     //equation (167)
+    Cbt = -0.1396*RtDelta - 0.3604*GtDelta + 0.5000*BtDelta;
+    Crt =  0.5000*RtDelta - 0.4598*GtDelta - 0.0402*BtDelta;
+    Yt    = dClip(Yt,0,1.0);
+    Cbt = dClip(Cbt,-0.5,0.5);
+    Crt = dClip(Crt,-0.5,0.5);
+    
+    Yts  = Yt;                                         //equation (168)
+    Cbts = dClip(Cbt*SmGain,-0.5,0.5);
+    Crts = dClip(Crt*SmGain,-0.5,0.5);
+    
+    return float3(Yts, Cbts, Crts);
+}
+
+
+#pragma mark - 片元着色器
+fragment float4 fragmentShader(IJKMetalRasterizerData input [[ stage_in ]],
                                texture2d <ushort> yTexture [[ texture(0) ]],
                                texture2d <ushort> uTexture [[ texture(1) ]],
                                texture2d <ushort> vTexture [[ texture(2) ]],
                                device const IJKHDRVividMetadata *metadata [[ buffer(0) ]],
-                               device const IJKHDRVividCurve *curve [[ buffer(1) ]]) {
+                               device const IJKHDRVividCurve *curve [[ buffer(1) ]],
+                               device const IJKHDRVividRenderConfig *config [[ buffer(2) ]]) {
     
     
+    // 获取坐标
     uint posX = uint(input.textureCoor.x * yTexture.get_width());
     uint posY = uint(input.textureCoor.y * yTexture.get_height());
-
-    uint uint_y = yTexture.read(uint2(posX, posY)).r;
-    uint uint_u = uTexture.read(uint2(posX/2, posY/2)).r;
-    uint uint_z = vTexture.read(uint2(posX/2, posY/2)).r;
     
- 
-    int y = static_cast<int>(uint_y);
-    int u = static_cast<int>(uint_u);
-    int v = static_cast<int>(uint_z);
+    // 读取YUV
+    int y = static_cast<int>(yTexture.read(uint2(posX, posY)).r);
+    int u = static_cast<int>(uTexture.read(uint2(posX/2, posY/2)).r);
+    int v = static_cast<int>(vTexture.read(uint2(posX/2, posY/2)).r);
     
-    // [64, 960]
-    float r = float(y - 64) * 1.164384                             - float(v - 512) * -1.67867;
-    float g = float(y - 64) * 1.164384 - float(u - 512) * 0.187326 - float(v - 512) * 0.65042;
-    float b = float(y - 64) * 1.164384 - float(u - 512) * -2.14177;
-    
-    float floatX = clip((float)r / 1024.f, 0.0, 1.0);
-    float floatY = clip((float)g / 1024.f, 0.0, 1.0);
-    float floatZ = clip((float)b / 1024.f, 0.0, 1.0);
-    
-
-    float ScaleFactor = 10000.0;
-    floatX = ScaleFactor *PQforward(floatX);
-    floatY = ScaleFactor *PQforward(floatY);
-    floatZ = ScaleFactor *PQforward(floatZ);
-
-    float comp0 = floatX;
-    float comp1 = floatY;
-    float comp2 = floatZ;
-    
+    float3 color;
+    if(0){
+        float weight = 1.0 / 876.0;
+        float fY = clip(weight * float(y - 64), 0.0f, 1.0f);
+        weight = 1.0 / 896.0;
+        float fU = clip(weight * float(u - 512), -0.5f, 0.5f);
+        float fV = clip(weight * float(v - 512), -0.5f, 0.5f);
         
-    float maxComp0 = (float)(PQinverse(comp0 / 10000.f));
-    float maxComp1 = (float)(PQinverse(comp1 / 10000.f));
-    float maxComp2 = (float)(PQinverse(comp2 / 10000.f));
-    
+        color.r = 1.0000 * fY - 0.0000 * fU + 1.4746 * fV;
+        color.g = 1.0000 * fY - 0.1645 * fU - 0.5713 * fV;
+        color.b = 1.0000 * fY + 1.8814 * fU - 0.0001 * fV;
+    }else{
+        // 转RGB [64, 960]
+        color.r = float(y - 64) * 1.164384                             - float(v - 512) * -1.67867;
+        color.g = float(y - 64) * 1.164384 - float(u - 512) * 0.187326 - float(v - 512) * 0.65042;
+        color.b = float(y - 64) * 1.164384 - float(u - 512) * -2.14177;
+        color = color/1023.000;
+    }
 
-    float max = comp0 > comp1 ? comp0 : comp1;
-    max = max > comp2 ? max : comp2;
+    float3 comp;
+    
+    if(config->GPUProcessFun == IJKMetalGPUProcessStaticHLGHDR){
+        color = GammatoLinear(color);
+        comp = BT2020toBT709(color);
+        comp = LineartoGamma(comp);
+        return float4(comp, 1.f);
+    }
+        
+    color = clip3(color, 0.0, 1.0);
+
+    if(config->GPUProcessFun == IJKMetalGPUProcessPQHDR || config->GPUProcessFun == IJKMetalGPUProcessPQSDR){
+        comp = PQtoLinear(color);
+    }else{
+        float Lw = GetLw(metadata);
+        comp = HLGtoLinear(color, Lw);
+    }
+    
+    // PROCESS
+    float3 maxComp = PQinverse3(comp);
+    
+    float max = max3(comp);
     float maxO = max;
     float maxC = max;
-    max = maxComp0 > maxComp1 ? maxComp0 : maxComp1;
-    max = max > maxComp2 ? max : maxComp2;
+    max = max3(maxComp);
+    
     float max1 = max;
     max1 = calc_curve(max, curve);
     float lumRatio;
-    {
-        if (max > 0) {
-            lumRatio = max1 / max;
-        } else {
-            lumRatio = 1.0;
-        }
-        maxC = (float)(10000.f * PQforward(max1));
-        lumRatio = maxO <= 0 ? 1 : maxC / maxO;
-
-        comp0 = (float)lumRatio * comp0;
-        comp1 = (float)lumRatio * comp1;
-        comp2 = (float)lumRatio * comp2;
-
-        if (max)
-        {
-            comp0 = (float)(PQinverse(comp0 / 10000.0));
-            comp1 = (float)(PQinverse(comp1 / 10000.0));
-            comp2 = (float)(PQinverse(comp2 / 10000.0));
-
-            float Y = 0.262700 * comp0 + 0.678000 * comp1 + 0.059300 * comp2;
-            float U = -0.1396*comp0 - 0.3604*comp1 + 0.5*comp2;
-            float V = 0.5*comp0 - 0.4598*comp1 - 0.0402*comp2;
-
-            float smCoef = saturation_modify(max, curve->maxEtemp_store, metadata, curve);
-            U = U * smCoef;
-            V = V * smCoef;
-
-            comp0 = (float)(1.0000*Y - 0.0000*U + 1.4746*V);
-            comp1 = (float)(1.0000*Y - 0.1645*U - 0.5713*V);
-            comp2 = (float)(1.0000*Y + 1.8814*U - 0.0001*V);
-
-            comp0 = clip(comp0, 0.0f, 1.0f);
-            comp1 = clip(comp1, 0.0f, 1.0f);
-            comp2 = clip(comp2, 0.0f, 1.0f);
     
-            comp0 = (float)(PQforward(comp0) * 10000.f);
-            comp1 = (float)(PQforward(comp1) * 10000.f);
-            comp2 = (float)(PQforward(comp2) * 10000.f);
-        }
+    if (max > 0) {
+        lumRatio = max1 / max;
+    } else {
+        lumRatio = 1.0;
     }
+    maxC = (float)(10000.f * PQforward(max1));
+    lumRatio = maxO <= 0 ? 1 : maxC / maxO;
     
-    ScaleFactor = 10000.0;
-    comp0 = (float)PQinverse((float)comp0 / ScaleFactor);
-    comp1 = (float)PQinverse((float)comp1 / ScaleFactor);
-    comp2 = (float)PQinverse((float)comp2 / ScaleFactor);
-
-    return float4(float3(comp0, comp1, comp2), 1.f);
-
-
+    comp = comp * (float)lumRatio;
+    
+    if (max){
+        comp = PQinverse3(comp);
+        
+        float Y = 0.262700*comp.r + 0.678000*comp.g + 0.059300*comp.b;
+        float U = -0.1396*comp.r - 0.3604*comp.g + 0.5*comp.b;
+        float V = 0.5*comp.r - 0.4598*comp.g - 0.0402*comp.b;
+        
+        float smCoef = saturation_modify(max, curve->maxEtemp_store, metadata, curve);
+        U = U * smCoef;
+        V = V * smCoef;
+        
+        comp.r = (float)(1.0000*Y - 0.0000*U + 1.4746*V);
+        comp.g = (float)(1.0000*Y - 0.1645*U - 0.5713*V);
+        comp.b = (float)(1.0000*Y + 1.8814*U - 0.0001*V);
+        
+        comp = clip3(comp, 0.0, 1.0);
+        comp = PQtoLinear(comp);
+    }
+    if(config->GPUProcessFun == IJKMetalGPUProcessPQHDR || config->GPUProcessFun == IJKMetalGPUProcessHLGHDR){
+        comp = PQinverse3(comp);
+        float EDRHeadroom = (config->maxHeadRoom - 1.0);
+        float luminanceScale = 1.0 + EDRHeadroom;
+        comp = RinehardOperator(comp, luminanceScale);
+//        comp = comp * config->maxHeadRoom;
+        return float4(comp, 1.f);
+    }else{
+        comp = BT2020toBT709(comp);
+        comp = LineartoGamma(comp);
+        
+        return float4(comp, 1.f);
+    }
 }

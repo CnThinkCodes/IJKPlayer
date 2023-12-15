@@ -46,6 +46,22 @@
 
 #define SPEC_MIN(a,b) (((a)<(b))?(a):(b))
 
+typedef enum IJKMetalProcessMode{
+    IJKMetalPreprocess = 0,
+    IJKMetalPostprocessHDR,
+    IJKMetalPostprocessSDR
+}IJKMetalProcessMode;
+
+typedef enum IJKMetalGPUProcessFun{
+    IJKMetalGPUProcessUnknow,
+    IJKMetalGPUProcessPQHDR,
+    IJKMetalGPUProcessHLGHDR,
+    IJKMetalGPUProcessPQSDR,
+    IJKMetalGPUProcessHLGSDR,
+    IJKMetalGPUProcessStaticHLGHDR
+}IJKMetalGPUProcessFun;
+
+
 typedef struct IJKHDRVividMetadata{
     unsigned int system_start_code;
     unsigned int minimum_maxrgb;
@@ -78,7 +94,6 @@ typedef struct IJKHDRVividMetadata{
     
     float _max_display_luminance;
     float _masterDisplay;
-    
 }IJKHDRVividMetadata;
 
 
@@ -132,9 +147,16 @@ typedef struct IJKHDRVividCurve{
     float RML;
     float RML_linear;
     
-    
 }IJKHDRVividCurve;
 
-
+typedef struct IJKHDRVividRenderConfig{
+    float currentHeadRoom;
+    float maxHeadRoom;
+    IJKMetalProcessMode processMode;
+    int metadataFlag;
+    int cureFlag;
+    int calcCureInGPU;
+    IJKMetalGPUProcessFun GPUProcessFun;
+}IJKHDRVividRenderConfig;
 
 #endif /* IJKHDRVividDataDefine_h */
