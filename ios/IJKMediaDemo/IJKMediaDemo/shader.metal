@@ -1425,10 +1425,17 @@ float3 HLGHDRStaticAdaptToSDR(float3 yuv){
 
 
 #pragma mark - 片元着色器
+
+//static const GLfloat g_bt2020[] = {
+//    1.164384,   1.164384,   1.164384,
+//    0.0,       -0.187326,   2.14177,
+//    1.67867,   -0.65042,    0.0,
+//};
+
 fragment float4 fragmentShader(IJKMetalRasterizerData input [[ stage_in ]],
-                               texture2d <ushort> yTexture [[ texture(0) ]],
-                               texture2d <ushort> uTexture [[ texture(1) ]],
-                               texture2d <ushort> vTexture [[ texture(2) ]],
+                               texture2d <float> yTexture [[ texture(0) ]],
+                               texture2d <float> uTexture [[ texture(1) ]],
+                               texture2d <float> vTexture [[ texture(2) ]],
                                device const IJKHDRVividMetadata *metadata [[ buffer(0) ]],
                                device const IJKHDRVividCurve *curve [[ buffer(1) ]],
                                device const IJKHDRVividRenderConfig *config [[ buffer(2) ]]) {
@@ -1439,29 +1446,68 @@ fragment float4 fragmentShader(IJKMetalRasterizerData input [[ stage_in ]],
     uint posY = uint(input.textureCoor.y * yTexture.get_height());
     
     // 读取YUV
-    int y = static_cast<int>(yTexture.read(uint2(posX, posY)).r);
-    int u = static_cast<int>(uTexture.read(uint2(posX/2, posY/2)).r);
-    int v = static_cast<int>(vTexture.read(uint2(posX/2, posY/2)).r);
-    
     float3 color;
+    float3 yuv;
+    if(config->pixelFormatType == IJKMetalPixelFormatTypeYUV420P10LE){
+        yuv.x = static_cast<float>(yTexture.read(uint2(posX, posY)).r);
+        yuv.y = static_cast<float>(uTexture.read(uint2(posX/2, posY/2)).r);
+        yuv.z = static_cast<float>(vTexture.read(uint2(posX/2, posY/2)).r);
+        return float4(1,0,0,1);
+    }else if(config->pixelFormatType == IJKMetalPixelFormatTypeYUV444P10LE){
+        yuv.x = static_cast<float>(yTexture.read(uint2(posX, posY)).r);
+        yuv.y = static_cast<float>(uTexture.read(uint2(posX, posY)).r);
+        yuv.z = static_cast<float>(vTexture.read(uint2(posX, posY)).r);
+        return float4(1,0,0,1);
+    }else if(config->pixelFormatType == IJKMetalPixelFormatTypeCVPixelBuffer){
+    
+        
+        
+        constexpr sampler textureSampler (mag_filter::linear, min_filter::linear);
+        yuv.x = yTexture.sample(textureSampler, input.textureCoor).r;
+        
+        yuv.y = uTexture.sample(textureSampler, input.textureCoor).r;
+        yuv.z = uTexture.sample(textureSampler, input.textureCoor).g;
+
+    
+        float3x3 kColorConversion601FullRangeMatrix = (matrix_float3x3){
+               (float3){1.0,    1.0,    1.0},
+               (float3){0.0,    -0.343, 1.765},
+               (float3){1.4,    -0.711, 0.0},
+        };
+        
+        float3 kColorConversion601FullRangeOffset = (float3){ -(16.0/255.0), -0.5, -0.5};
+        
+        float3 rgb = kColorConversion601FullRangeMatrix * (yuv + kColorConversion601FullRangeOffset);
+
+        return float4(rgb,1);
+    }else{
+        return float4(0,0,1,1);
+    }
+
+    
     if(0){
         float weight = 1.0 / 876.0;
-        float fY = clip(weight * float(y - 64), 0.0f, 1.0f);
+        float fY = clip(weight * float(yuv.x - 64), 0.0f, 1.0f);
         weight = 1.0 / 896.0;
-        float fU = clip(weight * float(u - 512), -0.5f, 0.5f);
-        float fV = clip(weight * float(v - 512), -0.5f, 0.5f);
+        float fU = clip(weight * float(yuv.y - 512), -0.5f, 0.5f);
+        float fV = clip(weight * float(yuv.z - 512), -0.5f, 0.5f);
         
         color.r = 1.0000 * fY - 0.0000 * fU + 1.4746 * fV;
         color.g = 1.0000 * fY - 0.1645 * fU - 0.5713 * fV;
         color.b = 1.0000 * fY + 1.8814 * fU - 0.0001 * fV;
     }else{
         // 转RGB [64, 960]
-        color.r = float(y - 64) * 1.164384                             - float(v - 512) * -1.67867;
-        color.g = float(y - 64) * 1.164384 - float(u - 512) * 0.187326 - float(v - 512) * 0.65042;
-        color.b = float(y - 64) * 1.164384 - float(u - 512) * -2.14177;
+        color.r = float(yuv.x - 64) * 1.164384                                  - float(yuv.z - 512) * -1.67867;
+        color.g = float(yuv.x - 64) * 1.164384 - float(yuv.y - 512) * 0.187326  - float(yuv.z - 512) * 0.65042;
+        color.b = float(yuv.x - 64) * 1.164384 - float(yuv.y - 512) * -2.14177;
         color = color/1023.000;
     }
-
+    
+    
+//    color = color * config->maxHeadRoom;
+    
+    return float4(color, 1);
+    
     float3 comp;
     
     if(config->GPUProcessFun == IJKMetalGPUProcessStaticHLGHDR){
@@ -1522,15 +1568,14 @@ fragment float4 fragmentShader(IJKMetalRasterizerData input [[ stage_in ]],
     }
     if(config->GPUProcessFun == IJKMetalGPUProcessPQHDR || config->GPUProcessFun == IJKMetalGPUProcessHLGHDR){
         comp = PQinverse3(comp);
-        float EDRHeadroom = (config->maxHeadRoom - 1.0);
-        float luminanceScale = 1.0 + EDRHeadroom;
-        comp = RinehardOperator(comp, luminanceScale);
+//        float EDRHeadroom = (config->maxHeadRoom - 1.0);
+//        float luminanceScale = 1.0 + EDRHeadroom;
+//        comp = RinehardOperator(comp, luminanceScale);
 //        comp = comp * config->maxHeadRoom;
         return float4(comp, 1.f);
     }else{
         comp = BT2020toBT709(comp);
         comp = LineartoGamma(comp);
-        
         return float4(comp, 1.f);
     }
 }

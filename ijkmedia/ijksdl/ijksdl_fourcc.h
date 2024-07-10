@@ -70,6 +70,9 @@
 #define SDL_FCC__VTB    SDL_FOURCC('_', 'V', 'T', 'B')    /**< iOS VideoToolbox */
 #define SDL_FCC__GLES2  SDL_FOURCC('_', 'E', 'S', '2')    /**< let Vout choose format */
 
+
+#define SDL_FCC_VIDEOTOOLBOX  SDL_FOURCC('H', 'V', 'T', 'B') /**FFMpeg VideoToolBox**/
+
 // undefine
 #define SDL_FCC_UNDF    SDL_FOURCC('U', 'N', 'D', 'F')    /**< undefined */
 

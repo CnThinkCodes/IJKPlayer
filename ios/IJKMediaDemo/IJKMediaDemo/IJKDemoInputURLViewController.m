@@ -38,7 +38,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     
-    self.textView.text = @"https://testmapps.1905.com/ttt.mp4";
+    self.textView.text = @"https://bdcloud-player-new.cdn.bcebos.com/demovideo/hdrdemo/vivid/SonyBraviaOLED4KDemo.vivid_bd265_4k.mp4";
 }
 
 - (void)onClickPlayButton {

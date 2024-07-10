@@ -133,6 +133,8 @@ enum AVLockOp {
   AV_LOCK_DESTROY, ///< Free mutex resources
 };
 
+static enum AVPixelFormat hw_pix_fmt;
+static AVBufferRef *hw_device_ctx = NULL;
 
 #if CONFIG_AVFILTER
 static inline
@@ -605,7 +607,19 @@ static int decoder_decode_frame(FFPlayer *ffp, Decoder *d, AVFrame *frame, AVSub
 
                 switch (d->avctx->codec_type) {
                     case AVMEDIA_TYPE_VIDEO:
-                        ret = avcodec_receive_frame(d->avctx, frame);
+                        
+                        if (frame->format == hw_pix_fmt) {
+                            AVFrame *sw_frame = NULL;
+                            sw_frame = av_frame_alloc();
+
+                            ret = avcodec_receive_frame(d->avctx, sw_frame);
+                            if ((ret = av_hwframe_transfer_data(frame, sw_frame, 0)) < 0) {
+                                fprintf(stderr, "Error transferring the data to system memory\n");
+                            }
+                            
+                        }else{
+                            ret = avcodec_receive_frame(d->avctx, frame);
+                        }
                         
                         if (ret >= 0) {
                             ffp->stat.vdps = SDL_SpeedSamplerAdd(&ffp->vdps_sampler, FFP_SHOW_VDPS_AVCODEC, "vdps[avcodec]");
@@ -617,7 +631,6 @@ static int decoder_decode_frame(FFPlayer *ffp, Decoder *d, AVFrame *frame, AVSub
                         }
                         break;
                     case AVMEDIA_TYPE_AUDIO:
-                        ret = avcodec_receive_frame(d->avctx, frame);
                         if (ret >= 0) {
                             AVRational tb = (AVRational){1, frame->sample_rate};
                             if (frame->pts != AV_NOPTS_VALUE)
@@ -1523,7 +1536,11 @@ static void alloc_picture(FFPlayer *ffp, int frame_format)
     if (realloc_texture(&vp->bmp, sdl_format, vp->width, vp->height, SDL_BLENDMODE_NONE, 0) < 0) {
 #else
     /* RV16, RV32 contains only one plane */
-    if (!vp->overlay || (!vp->overlay->is_private && vp->overlay->pitches[0] < vp->width)) {
+        
+        if (frame_format == AV_PIX_FMT_VIDEOTOOLBOX) {
+            
+        }else
+if (!vp->overlay || (!vp->overlay->is_private && vp->overlay->pitches[0] < vp->width)) {
 #endif
         /* SDL allocates a buffer smaller than requested if the video
          * overlay hardware is unable to support the requested size. */
@@ -2834,14 +2851,32 @@ static int audio_open(FFPlayer *opaque, int64_t wanted_channel_layout, int wante
     SDL_AoutSetDefaultLatencySeconds(ffp->aout, ((double)(2 * spec.size)) / audio_hw_params->bytes_per_sec);
     return spec.size;
 }
+    
+    
+
+
+
+    static enum AVPixelFormat get_hw_format(AVCodecContext *ctx,
+                                            const enum AVPixelFormat *pix_fmts)
+    {
+        const enum AVPixelFormat *p;
+        
+        for (p = pix_fmts; *p != -1; p++) {
+            if (*p == hw_pix_fmt)
+                return *p;
+        }
+        
+        fprintf(stderr, "Failed to get HW surface format.\n");
+        return AV_PIX_FMT_NONE;
+    }
 
 /* open a given stream. Return 0 if OK */
 static int stream_component_open(FFPlayer *ffp, int stream_index)
 {
     VideoState *is = ffp->is;
     AVFormatContext *ic = is->ic;
-    AVCodecContext *avctx;
-    const AVCodec *codec;
+    AVCodecContext *avctx = NULL;
+    const AVCodec *codec = NULL;
     const char *forced_codec_name = NULL;
     AVDictionary *opts = NULL;
     AVDictionaryEntry *t = NULL;
@@ -2849,21 +2884,70 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
     int64_t channel_layout;
     int ret = 0;
     int stream_lowres = ffp->lowres;
+    const AVCodecParameters *codecpar = ic->streams[stream_index]->codecpar;
 
     if (stream_index < 0 || stream_index >= ic->nb_streams)
         return -1;
-    avctx = avcodec_alloc_context3(NULL);
-    if (!avctx)
-        return AVERROR(ENOMEM);
-
-    ret = avcodec_parameters_to_context(avctx, ic->streams[stream_index]->codecpar);
-    if (ret < 0)
-        goto fail;
+ 
     
-    avctx->pkt_timebase = ic->streams[stream_index]->time_base;
+    do{
+        if(codecpar->codec_type != AVMEDIA_TYPE_VIDEO){
+            break;
+        }
+        enum AVHWDeviceType type = av_hwdevice_find_type_by_name("videotoolbox");
+        if (type == AV_HWDEVICE_TYPE_NONE) {
+            break;
+        }
         
-    codec = avcodec_find_decoder(avctx->codec_id);
-
+        av_find_best_stream(ic, AVMEDIA_TYPE_VIDEO, stream_index, -1, &codec, 0);
+        
+        for (int i = 0;; i++) {
+            const AVCodecHWConfig *config = avcodec_get_hw_config(codec, i);
+            if (!config) {
+                break;
+            }
+            if (config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX &&
+                config->device_type == type) {
+                hw_pix_fmt = config->pix_fmt;
+                break;
+            }
+        }
+       
+        avctx = avcodec_alloc_context3(codec);
+        if(avctx == NULL){
+            break;
+        }
+        
+        ret = avcodec_parameters_to_context(avctx, ic->streams[stream_index]->codecpar);
+        if (ret < 0)
+            goto fail;
+        
+        avctx->get_format = get_hw_format;
+        
+        int err = 0;
+        if ((err = av_hwdevice_ctx_create(&hw_device_ctx, type,
+                                          NULL, NULL, 0)) < 0) {
+            goto fail;
+        }
+        avctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
+    
+       
+    }while(0);
+    
+    if(avctx == NULL){
+        avctx = avcodec_alloc_context3(NULL);
+        if (!avctx)
+            return AVERROR(ENOMEM);
+        
+        ret = avcodec_parameters_to_context(avctx, ic->streams[stream_index]->codecpar);
+        if (ret < 0)
+            goto fail;
+        
+        avctx->pkt_timebase = ic->streams[stream_index]->time_base;
+            
+        codec = avcodec_find_decoder(avctx->codec_id);
+    }
+    
     switch (avctx->codec_type) {
         case AVMEDIA_TYPE_AUDIO   : is->last_audio_stream    = stream_index; forced_codec_name = ffp->audio_codec_name; break;
         case AVMEDIA_TYPE_SUBTITLE: is->last_subtitle_stream = stream_index; forced_codec_name = ffp->subtitle_codec_name; break;

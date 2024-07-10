@@ -62,6 +62,14 @@ typedef enum IJKMetalGPUProcessFun{
 }IJKMetalGPUProcessFun;
 
 
+typedef enum IJKMetalPixelFormatType{
+    IJKMetalPixelFormatTypeUnknow,
+    IJKMetalPixelFormatTypeYUV420P10LE,
+    IJKMetalPixelFormatTypeYUV444P10LE,
+    IJKMetalPixelFormatTypeCVPixelBuffer,
+}IJKMetalPixelFormatType;
+
+
 typedef struct IJKHDRVividMetadata{
     unsigned int system_start_code;
     unsigned int minimum_maxrgb;
@@ -157,6 +165,7 @@ typedef struct IJKHDRVividRenderConfig{
     int cureFlag;
     int calcCureInGPU;
     IJKMetalGPUProcessFun GPUProcessFun;
+    IJKMetalPixelFormatType pixelFormatType;
 }IJKHDRVividRenderConfig;
 
 #endif /* IJKHDRVividDataDefine_h */

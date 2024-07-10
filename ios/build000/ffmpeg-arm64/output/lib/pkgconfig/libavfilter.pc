@@ -1,0 +1,14 @@
+prefix=/Users/1905-developer-ios/Developer/Git/IJKPlayer/ios/build/ffmpeg-arm64/output
+exec_prefix=${prefix}
+libdir=/Users/1905-developer-ios/Developer/Git/IJKPlayer/ios/build/ffmpeg-arm64/output/lib
+includedir=/Users/1905-developer-ios/Developer/Git/IJKPlayer/ios/build/ffmpeg-arm64/output/include
+
+Name: libavfilter
+Description: FFmpeg audio/video filtering library
+Version: 8.44.100
+Requires: libavutil >= 57.28.100
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavfilter -pthread -lm
+Libs.private: 
+Cflags: -I${includedir}

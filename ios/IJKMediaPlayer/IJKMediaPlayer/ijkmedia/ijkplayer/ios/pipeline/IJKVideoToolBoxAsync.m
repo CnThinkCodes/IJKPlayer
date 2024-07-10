@@ -324,7 +324,7 @@ static void QueuePicture(Ijk_VideoToolBox_Opaque* ctx) {
         picture.format = IJK_AV_PIX_FMT__VIDEO_TOOLBOX;
 
         ffp_queue_picture(ctx->ffp, &picture, pts, duration, 0, ctx->ffp->is->viddec.pkt_serial);
-
+ 
         CVBufferRelease(picture.opaque);
 
         SortQueuePop(ctx);
@@ -404,7 +404,7 @@ static void VTDecoderCallback(void *decompressionOutputRefCon,
 #endif
 
         OSType format_type = CVPixelBufferGetPixelFormatType(imageBuffer);
-        if (format_type != kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) {
+        if (format_type != kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange && format_type != kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange && format_type != kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange) {
             ALOGI("format_type error \n");
             goto failed;
         }
@@ -533,6 +533,8 @@ static VTDecompressionSessionRef vtbsession_create(Ijk_VideoToolBox_Opaque* cont
     int       ret = 0;
     int       width  = context->codecpar->width;
     int       height = context->codecpar->height;
+    AVStream *stream = ffp->is->video_st;
+    AVCodecParameters *codecpar = stream->codecpar;
 
     VTDecompressionSessionRef vt_session = NULL;
     CFMutableDictionaryRef destinationPixelBufferAttributes;
@@ -548,6 +550,22 @@ static VTDecompressionSessionRef vtbsession_create(Ijk_VideoToolBox_Opaque* cont
     }
 
     ALOGI("after scale width %d height %d \n", width, height);
+    
+    OSType  targetPixFmt = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+    // AVPixelFormat
+    switch (codecpar->format) {
+        case AV_PIX_FMT_YUV420P10LE:
+            targetPixFmt = kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange;
+            av_log(NULL, AV_LOG_DEBUG, "VideoToolBoxCodec: target pix fmt: yuv420p10le");
+            break;
+        case AV_PIX_FMT_YUV444P10LE:
+            targetPixFmt = kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange;
+            av_log(NULL, AV_LOG_DEBUG, "VideoToolBoxCodec: target pix fmt: yuv444p10le");
+            break;
+        default:
+            av_log(NULL, AV_LOG_DEBUG, "VideoToolBoxCodec: target pix fmt: yuv420p8");
+            break;
+    }
 
     destinationPixelBufferAttributes = CFDictionaryCreateMutable(
                                                                  NULL,
@@ -555,13 +573,20 @@ static VTDecompressionSessionRef vtbsession_create(Ijk_VideoToolBox_Opaque* cont
                                                                  &kCFTypeDictionaryKeyCallBacks,
                                                                  &kCFTypeDictionaryValueCallBacks);
     CFDictionarySetSInt32(destinationPixelBufferAttributes,
-                          kCVPixelBufferPixelFormatTypeKey, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange);
+                          kCVPixelBufferPixelFormatTypeKey, targetPixFmt);
     CFDictionarySetSInt32(destinationPixelBufferAttributes,
                           kCVPixelBufferWidthKey, width);
     CFDictionarySetSInt32(destinationPixelBufferAttributes,
                           kCVPixelBufferHeightKey, height);
+
+    // openGL支持
+//    CFDictionarySetBoolean(destinationPixelBufferAttributes,
+//                          kCVPixelBufferOpenGLESCompatibilityKey, YES);
+    
+    // metal支持
     CFDictionarySetBoolean(destinationPixelBufferAttributes,
-                          kCVPixelBufferOpenGLESCompatibilityKey, YES);
+                           kCVPixelBufferMetalCompatibilityKey, YES);
+    
     outputCallback.decompressionOutputCallback = VTDecoderCallback;
     outputCallback.decompressionOutputRefCon = context  ;
     status = VTDecompressionSessionCreate(
@@ -665,6 +690,18 @@ static int decode_video_internal(Ijk_VideoToolBox_Opaque* context, AVCodecContex
         demux_size = avio_close_dyn_buf(pb, &demux_buff);
         sample_buff = CreateSampleBufferFrom(context->fmt_desc.fmt_desc, demux_buff, demux_size);
     } else {
+        if(avio_open_dyn_buf(&pb) < 0) {
+            goto failed;
+        }
+        ff_avc_parse_nal_units(pb, pData, iSize);
+        demux_size = avio_close_dyn_buf(pb, &demux_buff);
+        // ALOGI("demux_size:%d\n", demux_size);
+        if (demux_size == 0) {
+            goto failed;
+        }
+        
+        
+        
         sample_buff = CreateSampleBufferFrom(context->fmt_desc.fmt_desc, pData, iSize);
     }
     if (!sample_buff) {
@@ -717,8 +754,6 @@ static int decode_video_internal(Ijk_VideoToolBox_Opaque* context, AVCodecContex
         }
         goto failed;
     }
-
-
 
     if (sample_buff) {
         CFRelease(sample_buff);

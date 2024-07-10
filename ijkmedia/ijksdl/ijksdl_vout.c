@@ -117,3 +117,12 @@ int SDL_VoutFillFrameYUVOverlay(SDL_VoutOverlay *overlay, const AVFrame *frame)
 
     return overlay->func_fill_frame(overlay, frame);
 }
+
+
+AVFrame* SDL_VoutGetLinkedFrame(SDL_VoutOverlay *overlay){
+    if (overlay && overlay->func_get_linked_frame) {
+        return overlay->func_get_linked_frame(overlay);
+    }
+    
+    return NULL;
+}

@@ -306,6 +306,8 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame)
                 // ALOGE("copy draw frame");
                 dst_format = AV_PIX_FMT_YUV444P10LE;
             }
+            // 附加 metadata
+            _attach_vivid_metadata(overlay, frame);
             break;
         case SDL_FCC_RV32:
             dst_format = AV_PIX_FMT_0BGR32;
@@ -315,6 +317,13 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame)
             break;
         case SDL_FCC_RV16:
             dst_format = AV_PIX_FMT_RGB565;
+            break;
+        case SDL_FCC_VIDEOTOOLBOX:
+            use_linked_frame = 1;
+            dst_format = frame->format;
+            
+            // 附加 metadata
+            _attach_vivid_metadata(overlay, frame);
             break;
         default:
             ALOGE("SDL_VoutFFmpeg_ConvertPicture: unexpected overlay format %s(%d)",
@@ -390,6 +399,12 @@ static int func_fill_frame(SDL_VoutOverlay *overlay, const AVFrame *frame)
     return 0;
 }
 
+static AVFrame* func_get_linked_frame(SDL_VoutOverlay *overlay){
+    assert(overlay);
+    SDL_VoutOverlay_Opaque *opaque = overlay->opaque;
+    return opaque->linked_frame;
+}
+
 
 static SDL_Class g_vout_overlay_ffmpeg_class = {
     .name = "FFmpegVoutOverlay",
@@ -408,6 +423,9 @@ SDL_VoutOverlay *SDL_VoutFFmpeg_CreateOverlay(int width, int height, int frame_f
                     break;
                 case AV_PIX_FMT_YUV420P10LE:
                     overlay_format = SDL_FCC_I420P10LE;
+                    break;
+                case AV_PIX_FMT_VIDEOTOOLBOX:
+                    overlay_format = SDL_FCC_VIDEOTOOLBOX;
                     break;
                 case AV_PIX_FMT_YUV420P:
                 case AV_PIX_FMT_YUVJ420P:
@@ -446,6 +464,7 @@ SDL_VoutOverlay *SDL_VoutFFmpeg_CreateOverlay(int width, int height, int frame_f
     overlay->lock               = func_lock;
     overlay->unlock             = func_unlock;
     overlay->func_fill_frame    = func_fill_frame;
+    overlay->func_get_linked_frame = func_get_linked_frame;
     overlay->GTMcurve2 = NULL;
     overlay->metaData = NULL;
     overlay->vividCure = NULL;
@@ -531,6 +550,9 @@ SDL_VoutOverlay *SDL_VoutFFmpeg_CreateOverlay(int width, int height, int frame_f
             opaque->planes = 1;
             break;
         }
+        case SDL_FCC_VIDEOTOOLBOX:
+            
+            break;
         default:
             ALOGE("SDL_VoutFFmpeg_CreateOverlay(...): unknown format %.4s(0x%x)\n", (char*)&overlay_format, overlay_format);
             goto fail;

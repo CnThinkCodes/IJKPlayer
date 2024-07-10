@@ -12,6 +12,8 @@
 #import <AVFoundation/AVFoundation.h>
 #import "ijksdl_vout_shader.h"
 #import "hdrvivid_process.h"
+#include "ijksdl_vout_overlay_ffmpeg.h"
+
 
 @import simd;
 @import MetalKit;
@@ -137,12 +139,12 @@
             self.mtkLayer.wantsExtendedDynamicRangeContent = YES;
             self.mtkLayer.pixelFormat = MTLPixelFormatRGBA16Float;
             // self.mtkLayer.colorspace = CGColorSpaceCreateWithName(kCGColorSpaceExtendedLinearSRGB);
-            self.mtkLayer.colorspace = CGColorSpaceCreateWithName(kCGColorSpaceLinearITUR_2020);
+            self.mtkLayer.colorspace = CGColorSpaceCreateWithName(kCGColorSpaceITUR_2020_sRGBGamma);
             
             _curHeadroom = UIScreen.mainScreen.currentEDRHeadroom;
             _maxHeadroom = UIScreen.mainScreen.potentialEDRHeadroom;
             
-//            self.mtkLayer.EDRMetadata = [CAEDRMetadata HDR10MetadataWithMinLuminance:0.0 maxLuminance:650 opticalOutputScale:10000];
+            self.mtkLayer.EDRMetadata = [CAEDRMetadata HLGMetadata];
         }else{
             self.EDR = NO;
         }
@@ -274,6 +276,9 @@
     
 }
 
+//overlay_format = SDL_FCC_I444P10LE;
+//overlay_format = SDL_FCC_I420P10LE;
+
 - (BOOL)display:(SDL_VoutOverlay *)overlay{
     if(!_valid) return NO;
     
@@ -306,6 +311,22 @@
     renderConfig.maxHeadRoom = _maxHeadroom;
     renderConfig.currentHeadRoom = _curHeadroom;
     
+    switch (overlay->format) {
+        case SDL_FCC_I444P10LE:
+            renderConfig.pixelFormatType = IJKMetalPixelFormatTypeYUV444P10LE;
+            break;
+        case SDL_FCC_I420P10LE:
+            renderConfig.pixelFormatType = IJKMetalPixelFormatTypeYUV420P10LE;
+            break;
+        case SDL_FCC_VIDEOTOOLBOX:
+            renderConfig.pixelFormatType = IJKMetalPixelFormatTypeCVPixelBuffer;
+            break;
+        default:
+            renderConfig.pixelFormatType = IJKMetalPixelFormatTypeUnknow;
+            break;
+    }
+    
+
     if(renderConfig.metadataFlag){
         if(_EDR){
             renderConfig.GPUProcessFun = IJKMetalGPUProcessPQHDR;
@@ -354,11 +375,10 @@
     passDescriptor.colorAttachments[0].clearColor = _mtkView->_clearColor;
     
     static id<MTLTexture> Y_MTL_Texture = nil, U_MTL_Texture = nil, V_MTL_Texture = nil;
-    {
- 
+    if (overlay->format == SDL_FCC_I444P10LE) {
         if(Y_MTL_Texture == nil || Y_MTL_Texture.width != overlay->w || Y_MTL_Texture.height != overlay->h){
             MTLTextureDescriptor *Y_textureDesc = [[MTLTextureDescriptor alloc] init];
-            Y_textureDesc.pixelFormat = MTLPixelFormatR16Uint;
+            Y_textureDesc.pixelFormat = MTLPixelFormatR16Unorm;
             Y_textureDesc.width = overlay->w;
             Y_textureDesc.height = overlay->h;
             Y_MTL_Texture = [_device newTextureWithDescriptor:Y_textureDesc];
@@ -371,10 +391,53 @@
         [Y_MTL_Texture replaceRegion:Y_region mipmapLevel:0 withBytes:overlay->pixels[0] bytesPerRow:overlay->pitches[0]];
         
         
+        if(U_MTL_Texture == nil || U_MTL_Texture.width != overlay->w || U_MTL_Texture.height != overlay->h){
+            MTLTextureDescriptor *U_textureDesc = [[MTLTextureDescriptor alloc] init];
+            U_textureDesc.pixelFormat = MTLPixelFormatR16Unorm;
+            U_textureDesc.width = overlay->w;
+            U_textureDesc.height = overlay->h;
+            U_MTL_Texture = [_device newTextureWithDescriptor:U_textureDesc];
+        }
         
+        MTLRegion U_region = {
+            {0, 0, 0},
+            {overlay->pitches[1]/2, overlay->h, 1}
+        };
+        [U_MTL_Texture replaceRegion:U_region mipmapLevel:0 withBytes:overlay->pixels[1] bytesPerRow:overlay->pitches[1]];
+        
+        
+        if(V_MTL_Texture == nil || V_MTL_Texture.width != overlay->w || V_MTL_Texture.height !=  overlay->h){
+            MTLTextureDescriptor *V_textureDesc = [[MTLTextureDescriptor alloc] init];
+            V_textureDesc.pixelFormat = MTLPixelFormatR16Unorm;
+            V_textureDesc.width = overlay->w;
+            V_textureDesc.height = overlay->h;
+            V_MTL_Texture = [_device newTextureWithDescriptor:V_textureDesc];
+        }
+        
+        MTLRegion V_region = {
+            {0, 0, 0},
+            {overlay->pitches[2]/2, overlay->h, 1}
+        };
+        [V_MTL_Texture replaceRegion:V_region mipmapLevel:0 withBytes:overlay->pixels[2] bytesPerRow:overlay->pitches[2]];
+    }else if(overlay->format == SDL_FCC_I420P10LE){
+        if(Y_MTL_Texture == nil || Y_MTL_Texture.width != overlay->w || Y_MTL_Texture.height != overlay->h){
+            MTLTextureDescriptor *Y_textureDesc = [[MTLTextureDescriptor alloc] init];
+            Y_textureDesc.pixelFormat = MTLPixelFormatR16Unorm;
+            Y_textureDesc.width = overlay->w;
+            Y_textureDesc.height = overlay->h;
+            Y_MTL_Texture = [_device newTextureWithDescriptor:Y_textureDesc];
+        }
+        
+        MTLRegion Y_region = {
+            {0, 0, 0},
+            {overlay->pitches[0]/2, overlay->h, 1}
+        };
+        [Y_MTL_Texture replaceRegion:Y_region mipmapLevel:0 withBytes:overlay->pixels[0] bytesPerRow:overlay->pitches[0]];
+        
+    
         if(U_MTL_Texture == nil || U_MTL_Texture.width != overlay->w/2 || U_MTL_Texture.height != overlay->h/2){
             MTLTextureDescriptor *U_textureDesc = [[MTLTextureDescriptor alloc] init];
-            U_textureDesc.pixelFormat = MTLPixelFormatR16Uint;
+            U_textureDesc.pixelFormat = MTLPixelFormatRG16Unorm;
             U_textureDesc.width = overlay->w/2;
             U_textureDesc.height = overlay->h/2;
             U_MTL_Texture = [_device newTextureWithDescriptor:U_textureDesc];
@@ -389,7 +452,7 @@
         
         if(V_MTL_Texture == nil || V_MTL_Texture.width != overlay->w/2 || V_MTL_Texture.height !=  overlay->h/2){
             MTLTextureDescriptor *V_textureDesc = [[MTLTextureDescriptor alloc] init];
-            V_textureDesc.pixelFormat = MTLPixelFormatR16Uint;
+            V_textureDesc.pixelFormat = MTLPixelFormatR16Unorm;
             V_textureDesc.width = overlay->w/2;
             V_textureDesc.height = overlay->h/2;
             V_MTL_Texture = [_device newTextureWithDescriptor:V_textureDesc];
@@ -397,11 +460,100 @@
         
         MTLRegion V_region = {
             {0, 0, 0},
-            {overlay->pitches[2]/2, overlay->h/2, 1} 
+            {overlay->pitches[2]/2, overlay->h/2, 1}
         };
         [V_MTL_Texture replaceRegion:V_region mipmapLevel:0 withBytes:overlay->pixels[2] bytesPerRow:overlay->pitches[2]];
-    }
+    }else if(overlay->format == SDL_FCC_VIDEOTOOLBOX){
+        AVFrame *videoFrame = overlay->func_get_linked_frame(overlay);
+        CVPixelBufferRef pixelBuffer = (CVPixelBufferRef)videoFrame->data[3];
+        CVMetalTextureRef metalTexture = NULL;
+        size_t width = CVPixelBufferGetWidth(pixelBuffer);
+        size_t height = CVPixelBufferGetHeight(pixelBuffer);
+        size_t count = CVPixelBufferGetPlaneCount(pixelBuffer);
+        Boolean isPlanar = CVPixelBufferIsPlanar(pixelBuffer);
+        
+
+        if (count != 2) {
+            NSLog(@"error Planar cout not 2: t[%lu]", count);
+            return NO;
+        }
+        
+        size_t y_width = (int)CVPixelBufferGetWidthOfPlane(pixelBuffer, 0);
+        size_t y_height = (int)CVPixelBufferGetHeightOfPlane(pixelBuffer, 0);
+        
+        if(Y_MTL_Texture == nil || Y_MTL_Texture.width != y_width || Y_MTL_Texture.height != y_height){
+            MTLTextureDescriptor *Y_textureDesc = [[MTLTextureDescriptor alloc] init];
+            Y_textureDesc.pixelFormat = MTLPixelFormatR16Unorm;
+            Y_textureDesc.width = y_width;
+            Y_textureDesc.height = y_height;
+            Y_MTL_Texture = [_device newTextureWithDescriptor:Y_textureDesc];
+        }
+        
+        MTLRegion Y_region = {
+            {0, 0, 0},
+            {y_width, y_height, 1}
+        };
+        
+        CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+        
+        [Y_MTL_Texture replaceRegion:Y_region
+                         mipmapLevel:0
+                           withBytes:CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0)
+                         bytesPerRow:CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)];
+        
+        
+        size_t uv_width = (int)CVPixelBufferGetWidthOfPlane(pixelBuffer, 1);
+        size_t uv_height = (int)CVPixelBufferGetHeightOfPlane(pixelBuffer, 1);
+        
+        if(U_MTL_Texture == nil || U_MTL_Texture.width != uv_width || U_MTL_Texture.height != uv_height){
+            MTLTextureDescriptor *U_textureDesc = [[MTLTextureDescriptor alloc] init];
+            U_textureDesc.pixelFormat = MTLPixelFormatRG16Unorm;
+            U_textureDesc.width = uv_width;
+            U_textureDesc.height = uv_height;
+            U_MTL_Texture = [_device newTextureWithDescriptor:U_textureDesc];
+        }
+        
+        MTLRegion U_region = {
+            {0, 0, 0},
+            {uv_width , uv_height, 1}
+        };
+        
+        
+        [U_MTL_Texture replaceRegion:U_region
+                         mipmapLevel:0
+                           withBytes:CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1)
+                         bytesPerRow:CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1)];
+        
+        
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+
+        
     
+//
+//        CVReturn ret = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, _metalTextureCache, pixelBuffer, NULL, MTLPixelFormatRGBA16Uint, width, height, 0, &metalTexture);
+        
+//        CVReturn ret = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, _metalTextureCache, pixelBuffer, NULL, MTLPixelFormatRGBA16Uint, width, height, 0, &metalTexture);
+//        
+//
+//        if (ret != kCVReturnSuccess) {
+//            return NO;
+//        }
+//        FULL_MTL_Texture = nil;
+//        FULL_MTL_Texture = CVMetalTextureGetTexture(metalTexture);
+//        
+//        CFRelease(metalTexture);
+//
+//        if (FULL_MTL_Texture == nil) {
+//            CVMetalTextureCacheFlush(_metalTextureCache, 0);
+//            return NO;
+//        }
+        
+      
+        
+    }else{
+        NSLog(@"无法播放");
+        return NO;
+    }
     
     [self setupVertex:passDescriptor width:overlay->w hight:overlay->h];
     
@@ -419,7 +571,7 @@
     [renderEncoder setFragmentTexture:U_MTL_Texture atIndex:1];
     
     [renderEncoder setFragmentTexture:V_MTL_Texture atIndex:2];
-    
+        
     [renderEncoder setFragmentBuffer:_vividMetaDataBuffer offset:0 atIndex:0];
     
     [renderEncoder setFragmentBuffer:_vividCurveBuffer offset:0 atIndex:1];
@@ -431,11 +583,12 @@
     // 结束渲染
     [renderEncoder endEncoding];
     
-    __weak __typeof(self)weakSelf = self;
+//    __weak __typeof(self)weakSelf = self;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> _Nonnull buffer) {
 //        [Y_MTL_Texture setPurgeableState:MTLPurgeableStateEmpty];
 //        [U_MTL_Texture setPurgeableState:MTLPurgeableStateEmpty];
 //        [V_MTL_Texture setPurgeableState:MTLPurgeableStateEmpty];
+         
         
         [self.dsipalyLock unlock];
     }];
