@@ -2891,6 +2891,8 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
  
     
     do{
+        break;
+        
         if(codecpar->codec_type != AVMEDIA_TYPE_VIDEO){
             break;
         }

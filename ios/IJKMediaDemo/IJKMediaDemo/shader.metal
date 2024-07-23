@@ -1433,9 +1433,9 @@ float3 HLGHDRStaticAdaptToSDR(float3 yuv){
 //};
 
 fragment float4 fragmentShader(IJKMetalRasterizerData input [[ stage_in ]],
-                               texture2d <float> yTexture [[ texture(0) ]],
-                               texture2d <float> uTexture [[ texture(1) ]],
-                               texture2d <float> vTexture [[ texture(2) ]],
+                               texture2d <ushort> yTexture [[ texture(0) ]],
+                               texture2d <ushort> uTexture [[ texture(1) ]],
+                               texture2d <ushort> vTexture [[ texture(2) ]],
                                device const IJKHDRVividMetadata *metadata [[ buffer(0) ]],
                                device const IJKHDRVividCurve *curve [[ buffer(1) ]],
                                device const IJKHDRVividRenderConfig *config [[ buffer(2) ]]) {
@@ -1449,15 +1449,43 @@ fragment float4 fragmentShader(IJKMetalRasterizerData input [[ stage_in ]],
     float3 color;
     float3 yuv;
     if(config->pixelFormatType == IJKMetalPixelFormatTypeYUV420P10LE){
-        yuv.x = static_cast<float>(yTexture.read(uint2(posX, posY)).r);
-        yuv.y = static_cast<float>(uTexture.read(uint2(posX/2, posY/2)).r);
-        yuv.z = static_cast<float>(vTexture.read(uint2(posX/2, posY/2)).r);
-        return float4(1,0,0,1);
+                yuv.x = static_cast<float>(yTexture.read(uint2(posX, posY)).r);
+                yuv.y = static_cast<float>(uTexture.read(uint2(posX/2, posY/2)).r);
+                yuv.z = static_cast<float>(vTexture.read(uint2(posX/2, posY/2)).r);
+        
+//        constexpr sampler textureSampler (mag_filter::linear, min_filter::linear);
+//        
+//        
+//        
+////        yuv.x = static_cast<float>(yTexture.read(uint2(posX, posY)).r);
+////        yuv.y = static_cast<float>(uTexture.read(uint2(posX/2, posY/2)).r);
+////        yuv.z = static_cast<float>(vTexture.read(uint2(posX/2, posY/2)).r);
+//        
+//        
+//        yuv.x = yTexture.sample(textureSampler, input.textureCoor).r;
+//        yuv.y = uTexture.sample(textureSampler, input.textureCoor).r;
+//        yuv.z = vTexture.sample(textureSampler, input.textureCoor).r;
+//        
+//        
+//        float3x3 kColorConversion601FullRangeMatrix = (matrix_float3x3){
+//               (float3){  1.1678f, 0.0000f, 1.6836f},
+//               (float3){1.1678f, -0.1879f, -0.6523f},
+//               (float3){ 1.1678f, 2.1481f, 0.0000f},
+//        };
+//        
+//        
+// 
+//    
+//        float3 kColorConversion601FullRangeOffset = (float3){ -0.062561095f,  -0.500488759f, -0.500488759f};
+//        
+//        float3 rgb = (yuv + kColorConversion601FullRangeOffset) *  kColorConversion601FullRangeMatrix ;
+//
+//        return float4(rgb,1);
+        
     }else if(config->pixelFormatType == IJKMetalPixelFormatTypeYUV444P10LE){
         yuv.x = static_cast<float>(yTexture.read(uint2(posX, posY)).r);
         yuv.y = static_cast<float>(uTexture.read(uint2(posX, posY)).r);
         yuv.z = static_cast<float>(vTexture.read(uint2(posX, posY)).r);
-        return float4(1,0,0,1);
     }else if(config->pixelFormatType == IJKMetalPixelFormatTypeCVPixelBuffer){
     
         
@@ -1470,12 +1498,12 @@ fragment float4 fragmentShader(IJKMetalRasterizerData input [[ stage_in ]],
 
     
         float3x3 kColorConversion601FullRangeMatrix = (matrix_float3x3){
-               (float3){1.0,    1.0,    1.0},
-               (float3){0.0,    -0.343, 1.765},
-               (float3){1.4,    -0.711, 0.0},
+               (float3){ 1.1644f, 1.1644f, 1.1644f},
+               (float3){0.0f, -0.1881, 2.1501},
+               (float3){1.6853, -0.6529, 0.0f},
         };
         
-        float3 kColorConversion601FullRangeOffset = (float3){ -(16.0/255.0), -0.5, -0.5};
+        float3 kColorConversion601FullRangeOffset = (float3){ -(64.0/1023.0), -0.5, -0.5};
         
         float3 rgb = kColorConversion601FullRangeMatrix * (yuv + kColorConversion601FullRangeOffset);
 
@@ -1506,7 +1534,7 @@ fragment float4 fragmentShader(IJKMetalRasterizerData input [[ stage_in ]],
     
 //    color = color * config->maxHeadRoom;
     
-    return float4(color, 1);
+//    return float4(color, 1);
     
     float3 comp;
     

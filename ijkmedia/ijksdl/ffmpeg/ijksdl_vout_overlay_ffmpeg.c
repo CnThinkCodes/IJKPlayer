@@ -224,7 +224,7 @@ static int _attach_vivid_metadata(SDL_VoutOverlay *overlay, const AVFrame *frame
             
             float *GTMcurve2 = (float *)mallocz(sizeof(float) * (CURVELEN + 1));
             if(GTMcurve2 == NULL) goto faild;
-            InitParams(100, pMetaData, MasterDisplayPQ, curve, GTMcurve2, IJKMetalPostprocessSDR);
+            InitParams(1000, pMetaData, MasterDisplayPQ, curve, GTMcurve2, IJKMetalPostprocessSDR);
             overlay->vividCure = curve;
             overlay->GTMcurve2 = GTMcurve2;
             

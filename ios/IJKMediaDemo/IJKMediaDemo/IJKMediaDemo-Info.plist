@@ -50,5 +50,7 @@
 	</array>
 	<key>UIUserInterfaceStyle</key>
 	<string>Light</string>
+    <key>NSCameraUsageDescription</key>
+    <string>我们将使用到您的相机权限</string>
 </dict>
 </plist>
